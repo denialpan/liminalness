@@ -1,0 +1,10 @@
+{
+  "type": "liminalness:type_backrooms",
+  "generator": {
+    "type": "liminalness:gen_backrooms",
+    "biome_source": {
+      "type": "minecraft:fixed",
+      "biome": "liminalness:biome_backrooms"
+    }
+  }
+}

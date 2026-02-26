@@ -1,0 +1,13 @@
+{
+  "itemGroup.liminalness": "Example Mod Tab",
+  "block.liminalness.example_block": "Example Block",
+  "item.liminalness.example_item": "Example Item",
+
+  "liminalness.configuration.title": "liminalness Configs",
+  "liminalness.configuration.section.liminalness.common.toml": "liminalness Configs",
+  "liminalness.configuration.section.liminalness.common.toml.title": "liminalness Configs",
+  "liminalness.configuration.items": "Item List",
+  "liminalness.configuration.logDirtBlock": "Log Dirt Block",
+  "liminalness.configuration.magicNumberIntroduction": "Magic Number Text",
+  "liminalness.configuration.magicNumber": "Magic Number"
+}

@@ -1,0 +1,39 @@
+{
+  "dimension": "liminalness:dim_backrooms",
+  "generation_y": 50,
+  "min_y": 0,
+  "max_y": 512,
+  "generation_radius_horizontal": 16,
+  "generation_radius_vertical": 16,
+  "steps_per_tick": 10,
+  "schematics": [
+    {
+      "path": "schematics/backrooms_spawn_1.schem",
+      "weight": 0
+    },
+    {
+      "path": "schematics/backrooms_corridor_1.schem",
+      "weight": 10
+    },
+    {
+      "path": "schematics/backrooms_corridor_2.schem",
+      "weight": 10
+    },
+    {
+      "path": "schematics/backrooms_corridor_3.schem",
+      "weight": 10
+    },
+    {
+      "path": "schematics/backrooms_corridor_4.schem",
+      "weight": 10
+    },
+    {
+      "path": "schematics/backrooms_hole_1.schem",
+      "weight": 1
+    },
+    {
+      "path": "schematics/backrooms_stair_1.schem",
+      "weight": 10
+    }
+  ]
+}
