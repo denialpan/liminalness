@@ -6,12 +6,21 @@ import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
 import com.danielpan888.liminalness.util.SchematicLoader;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.ChunkWatchEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
@@ -28,6 +37,11 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
+
+import java.util.ArrayDeque;
+import java.util.HashSet;
+import java.util.Queue;
+import java.util.Set;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(liminalness.MODID)
@@ -120,6 +134,82 @@ public class liminalness {
                 BlockState existing = gen.serverLevel.getBlockState(world);
                 if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
                 gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+            }
+        }
+    }
+
+    // enter dimension
+    @SubscribeEvent
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+
+        MinecraftServer server = event.getEntity().getServer();
+        BlockPos pos = event.getPos();
+        BlockState state = level.getBlockState(pos);
+
+        // is bed and no skylight and bfs has no light anywhere 5 radius
+        if (state.getBlock() instanceof BedBlock) {
+
+            if (level.getBrightness(LightLayer.SKY, pos) > 0) return;
+
+            int radius = 5;
+            boolean canTp = true;
+            Queue<BlockPos> queue = new ArrayDeque<>();
+            Set<BlockPos> visited = new HashSet<>();
+
+            queue.add(pos);
+            visited.add(pos);
+
+            while (!queue.isEmpty()) {
+                BlockPos current = queue.poll();
+
+                BlockState checkState = level.getBlockState(current);
+
+
+                if (!checkState.isAir()) {
+                    if (level.getBrightness(LightLayer.BLOCK, current) > 0) {
+                        canTp = false;
+                        break;
+                    }
+                    continue;
+                }
+
+                for (Direction dir : Direction.values()) {
+                    BlockPos neighbour = current.relative(dir);
+
+                    if (visited.contains(neighbour)) continue;
+
+                    if (Math.abs(neighbour.getX() - pos.getX()) > radius) continue;
+                    if (Math.abs(neighbour.getY() - pos.getY()) > radius) continue;
+                    if (Math.abs(neighbour.getZ() - pos.getZ()) > radius) continue;
+
+                    visited.add(neighbour);
+                    queue.add(neighbour);
+                }
+            }
+
+            // teleport to dimension
+            if (canTp) {
+                ResourceKey<Level> backroomsKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse("liminalness:dim_backrooms"));
+
+                ServerLevel backrooms = server.getLevel(backroomsKey);
+                if (backrooms == null) {
+                    return;
+                }
+
+                player.teleportTo(
+                        backrooms,
+                        0, 0, 0,
+                        player.getYRot(),
+                        player.getXRot()
+                );
+
+                server.execute(() -> {
+                    player.moveTo(0.5, 128.0, 0.5, player.getYRot(), player.getXRot());
+                    player.connection.teleport(0.5, 128.0, 0.5, player.getYRot(), player.getXRot());
+                });
+
             }
         }
     }

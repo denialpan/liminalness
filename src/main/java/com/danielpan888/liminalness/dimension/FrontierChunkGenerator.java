@@ -127,8 +127,15 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public void seedFresh() {
         if (this.schematics.isEmpty()) return;
         liminalness.LOGGER.info("seeding new generation for: {}", getDimensionId());
-        BlockPos startPos = new BlockPos(0, this.generationY, 0);
-        SchematicLoader.Schematic startSchema = this.schematics.get(0);
+        SchematicLoader.Schematic startSchema = schematics.get(0);
+        int[] extents = getExtents(startSchema);
+
+        BlockPos startPos = new BlockPos(
+            -(extents[0] / 2),
+            generationY - (extents[1] / 2),
+            -(extents[2] / 2)
+        );
+
         this.roomOrigins.put(startPos, startSchema);
         seedFrontier(startPos, startSchema);
         resume();

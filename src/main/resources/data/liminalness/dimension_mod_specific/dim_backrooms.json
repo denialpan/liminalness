@@ -1,6 +1,6 @@
 {
   "dimension": "liminalness:dim_backrooms",
-  "generation_y": 50,
+  "generation_y": 128,
   "min_y": 0,
   "max_y": 512,
   "generation_radius_horizontal": 16,
