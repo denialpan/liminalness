@@ -2,11 +2,14 @@ package com.danielpan888.liminalness.util;
 
 import com.danielpan888.liminalness.liminalness;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
@@ -73,18 +76,40 @@ public class ChestLootHandler {
         List<Integer> slots = new ArrayList<>();
 
         for (int i = 0; i < 27; i++) slots.add(i);
+
+        List<Holder<Enchantment>> enchantmentPool = getEnchantmentPool(level);
+
         for (int i = 0; i < itemCount && !slots.isEmpty(); i++) {
             int slotIndex = rand.nextInt(slots.size());
             int slot = slots.remove(slotIndex);
 
             Item item = pool.get(rand.nextInt(pool.size()));
-            int count = 1 + rand.nextInt(
-                    Math.min(item.getDefaultMaxStackSize(), 8));
+            int count = 1 + rand.nextInt(Math.min(item.getDefaultMaxStackSize(), 8));
+            ItemStack stack = new ItemStack(item, count);
 
-            chest.setItem(slot, new ItemStack(item, count));
+            if (!enchantmentPool.isEmpty() && rand.nextFloat() < 0.20f) {
+                int enchantCount = 1 + rand.nextInt(5);
+                for (int e = 0; e < enchantCount; e++) {
+                    Holder<Enchantment> enchantment =
+                            enchantmentPool.get(rand.nextInt(enchantmentPool.size()));
+                    int maxLevel = enchantment.value().getMaxLevel();
+                    int enchantmentLevel = 1 + rand.nextInt(maxLevel);
+                    stack.enchant(enchantment, enchantmentLevel);
+                }
+            }
+
+            chest.setItem(slot, stack);
         }
 
         liminalness.LOGGER.debug("chest loot handler - chest at {} with {} items", pos, itemCount);
+    }
+
+    private static List<Holder<Enchantment>> getEnchantmentPool(ServerLevel level) {
+        List<Holder<Enchantment>> pool = new ArrayList<>();
+        // Look up enchantments from the level's registry — includes modded enchantments
+        var registry = level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+        registry.listElements().forEach(pool::add);
+        return pool;
     }
 
 }
