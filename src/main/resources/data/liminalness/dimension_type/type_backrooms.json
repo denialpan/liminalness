@@ -1,19 +1,25 @@
 {
+
+  "has_skylight": true,
+  "has_ceiling": false,
+  "has_ender_dragon_fight": false,
+  "coordinate_scale": 1,
+  "has_fixed_time": true,
+  "ambient_light": 0,
+  "skybox": "none",
+  "cardinal_light": "default",
+
   "ultrawarm": false,
   "natural": false,
   "piglin_safe": false,
   "respawn_anchor_works": false,
-  "bed_works": true,
+  "bed_works": false,
   "has_raids": false,
-  "has_skylight": false,
-  "has_ceiling": false,
-  "coordinate_scale": 1,
-  "ambient_light": 0.0,
-  "logical_height": 384,
   "infiniburn": "#minecraft:infiniburn_overworld",
   "min_y": 0,
   "height": 512,
+  "logical_height": 384,
   "monster_spawn_light_level": 0,
   "monster_spawn_block_light_limit": 0,
-  "effects": "minecraft:the_end"
+  "effects": "minecraft:the_nether"
 }
