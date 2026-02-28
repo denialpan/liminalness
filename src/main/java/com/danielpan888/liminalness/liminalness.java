@@ -3,15 +3,13 @@ package com.danielpan888.liminalness;
 import com.danielpan888.liminalness.dimension.DimensionManager;
 import com.danielpan888.liminalness.dimension.FrontierChunkGenerator;
 import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
+import com.danielpan888.liminalness.util.ChestLootHandler;
 import com.danielpan888.liminalness.util.SchematicLoader;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.DustColorTransitionOptions;
-import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -152,18 +150,24 @@ public class liminalness {
                 gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
             }
 
-            // After replacing connection markers with air
             for (var block : schematic.blocks().entrySet()) {
+                if (block.getKey() == null || block.getValue() == null) continue;
+                BlockPos world = origin.offset(block.getKey());
+                if (world.getX() < minX || world.getX() >= maxX) continue;
+                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+
                 if (block.getValue().is(FrontierChunkGenerator.PORTAL_MARKER)) {
-                    BlockPos world = origin.offset(block.getKey());
-                    if (world.getX() < minX || world.getX() >= maxX) continue;
-                    if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+                    BlockState existing = gen.serverLevel.getBlockState(world);
+                    if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
                     gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+                } else if (block.getValue().is(FrontierChunkGenerator.CHEST_MARKER)) {
+                    if (gen.consumedChests.contains(world)) continue;
+                    ChestLootHandler.fillChest(gen.serverLevel, world, gen.worldSeed);
+                    gen.consumedChests.add(world);
                 }
             }
-
-
         }
+
     }
 
     private void checkPortals(MinecraftServer server) {
@@ -207,7 +211,7 @@ public class liminalness {
 
             for (ServerPlayer player : players) {
                 BlockPos feet = player.blockPosition();
-                if (gen.portalPositions.contains(feet) || gen.portalPositions.contains(feet.below())) {
+                if (gen.portalPositions.contains(feet)) {
                     handlePortalTrigger(player, dimId, server);
                 }
             }
@@ -300,18 +304,18 @@ public class liminalness {
                 }
 
                 savedPositions.put(player.getUUID(), new OverworldPosition(
-                        player.getX(),
-                        player.getY(),
-                        player.getZ(),
-                        player.getYRot(),
-                        player.getXRot()
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    player.getYRot(),
+                    player.getXRot()
                 ));
 
                 player.teleportTo(
-                        backrooms,
-                        0, 0, 0,
-                        player.getYRot(),
-                        player.getXRot()
+                    backrooms,
+                    0, 0, 0,
+                    player.getYRot(),
+                    player.getXRot()
                 );
 
                 server.execute(() -> {

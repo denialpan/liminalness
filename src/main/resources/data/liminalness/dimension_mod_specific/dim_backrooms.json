@@ -27,6 +27,11 @@
     },
 
     {
+      "path": "schematics/backrooms_loot_room_1.schem",
+      "weight": 3
+    },
+
+    {
       "path": "schematics/backrooms_hall_intersection_1.schem",
       "weight": 3
     },

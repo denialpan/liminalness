@@ -22,6 +22,7 @@ public class FrontierSavedData extends SavedData {
     private record RoomRecord(BlockPos origin, String schematicPath) {}
     private static final Set<Long> patchedChunks = new HashSet<>();
     private final Set<BlockPos> portalPositions = new HashSet<>();
+    private final Set<BlockPos> consumedChests = new HashSet<>();
 
     private static String dataName(FrontierChunkGenerator gen) {
         return "frontier_" + gen.getDimensionId().toString().replace(":", "_");
@@ -61,6 +62,12 @@ public class FrontierSavedData extends SavedData {
             data.portalPositions.add(new BlockPos(p.getInt("x"), p.getInt("y"), p.getInt("z")));
         }
 
+        ListTag consumedTag = tag.getList("consumed_chests", Tag.TAG_COMPOUND);
+        for (int i = 0; i < consumedTag.size(); i++) {
+            CompoundTag c = consumedTag.getCompound(i);
+            data.consumedChests.add(new BlockPos(c.getInt("x"), c.getInt("y"), c.getInt("z")));
+        }
+
         liminalness.LOGGER.info("frontier saved data — rooms={} claimed={} patched={} portals={}", data.rooms.size(), data.claimed.size(), data.patchedChunks.size(), data.portalPositions.size());
 
         return data;
@@ -73,6 +80,7 @@ public class FrontierSavedData extends SavedData {
         gen.claimed.clear();
         gen.patchedChunks.clear();
         gen.portalPositions.clear();
+        gen.consumedChests.clear();
 
         for (RoomRecord rr : rooms) {
             SchematicLoader.Schematic schematic = gen.getSchematicByPath(rr.schematicPath());
@@ -88,6 +96,7 @@ public class FrontierSavedData extends SavedData {
         for (BlockPos pos : portalPositions) {
             gen.portalPositions.add(pos);
         }
+        gen.consumedChests.addAll(consumedChests);
 
         liminalness.LOGGER.info("frontier saved data - {}: applied save — {} rooms, {} claimed", gen.getDimensionId(), gen.roomOrigins.size(), gen.claimed.size());
     }
@@ -97,6 +106,7 @@ public class FrontierSavedData extends SavedData {
         claimed.clear();
         patchedChunks.clear();
         portalPositions.clear();
+        consumedChests.clear();
 
         for (var entry : gen.roomOrigins.entrySet()) {
             rooms.add(new RoomRecord(
@@ -108,6 +118,8 @@ public class FrontierSavedData extends SavedData {
         claimed.addAll(gen.claimed);
         patchedChunks.addAll(gen.patchedChunks);
         portalPositions.addAll(gen.portalPositions);
+        consumedChests.addAll(gen.consumedChests);
+
     }
 
     public static void saveNow(ServerLevel level, FrontierChunkGenerator gen) {
@@ -180,6 +192,16 @@ public class FrontierSavedData extends SavedData {
             portalsTag.add(p);
         }
         tag.put("portal_positions", portalsTag);
+
+        ListTag consumedTag = new ListTag();
+        for (BlockPos pos : consumedChests) {
+            CompoundTag c = new CompoundTag();
+            c.putInt("x", pos.getX());
+            c.putInt("y", pos.getY());
+            c.putInt("z", pos.getZ());
+            consumedTag.add(c);
+        }
+        tag.put("consumed_chests", consumedTag);
 
         liminalness.LOGGER.info("save — rooms={} claimed={} patched={} portals={}", rooms.size(), claimed.size(), patchedChunks.size(), portalPositions.size());
 
