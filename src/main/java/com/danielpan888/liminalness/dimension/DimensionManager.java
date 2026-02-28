@@ -10,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -97,7 +98,6 @@ public class DimensionManager {
                 }
             }
 
-            // Update serverLevel reference if needed
             if (generator.serverLevel == null && level != null) {
                 generator.serverLevel = level;
             }
@@ -156,6 +156,10 @@ public class DimensionManager {
 
     public static ChunkGenerator getInstance(ResourceLocation dimensionId) {
         return instances.get(dimensionId);
+    }
+
+    public static Map<ResourceLocation, ChunkGenerator> getInstances() {
+        return Collections.unmodifiableMap(instances);
     }
 
 

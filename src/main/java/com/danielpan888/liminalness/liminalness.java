@@ -5,8 +5,13 @@ import com.danielpan888.liminalness.dimension.FrontierChunkGenerator;
 import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
 import com.danielpan888.liminalness.util.SchematicLoader;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.DustColorTransitionOptions;
+import net.minecraft.core.particles.DustParticleOptions;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -26,6 +31,7 @@ import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import org.joml.Vector3f;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -38,10 +44,9 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
-import java.util.ArrayDeque;
-import java.util.HashSet;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
+
+// TODO: organize schematic marker and portals?
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(liminalness.MODID)
@@ -49,6 +54,17 @@ public class liminalness {
 
     public static final String MODID = "liminalness";
     public static final Logger LOGGER = LogUtils.getLogger();
+
+
+    private record OverworldPosition(
+        double x, double y, double z,
+        float yRot, float xRot
+    ) {}
+
+    private static final Map<UUID, OverworldPosition> savedPositions = new HashMap<>();
+
+    private int particleTick = 0;
+    private static final int PARTICLE_INTERVAL = 20; // every 10 ticks = 0.5 seconds
 
     public liminalness(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
@@ -88,6 +104,7 @@ public class liminalness {
     @SubscribeEvent
     public void onServerTick(ServerTickEvent.Post event) {
         DimensionManager.onServerTick(event.getServer());
+        checkPortals(event.getServer());
     }
 
     // intercept server to update client chunks, prevents client race condition
@@ -101,7 +118,6 @@ public class liminalness {
         ChunkPos chunkPosition = event.getPos();
         long key = FrontierChunkGenerator.chunkKey(chunkPosition.x, chunkPosition.z);
 
-        // Only patch once — after that Minecraft's own chunk saving handles persistence
         if (gen.patchedChunks.contains(key)) return;
         gen.patchedChunks.add(key);
 
@@ -135,6 +151,91 @@ public class liminalness {
                 if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
                 gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
             }
+
+            // After replacing connection markers with air
+            for (var block : schematic.blocks().entrySet()) {
+                if (block.getValue().is(FrontierChunkGenerator.PORTAL_MARKER)) {
+                    BlockPos world = origin.offset(block.getKey());
+                    if (world.getX() < minX || world.getX() >= maxX) continue;
+                    if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+                    gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+                }
+            }
+
+
+        }
+    }
+
+    private void checkPortals(MinecraftServer server) {
+
+        particleTick += 1;
+
+        for (var entry : DimensionManager.getInstances().entrySet()) {
+            ResourceLocation dimId = entry.getKey();
+            FrontierChunkGenerator gen = (FrontierChunkGenerator) entry.getValue();
+
+            if (gen.serverLevel == null || gen.portalPositions.isEmpty()) continue;
+
+            List<ServerPlayer> players = new ArrayList<>(gen.serverLevel.players());
+
+            if (particleTick >= PARTICLE_INTERVAL) {
+                for (BlockPos portalPos : gen.portalPositions) {
+                    for (ServerPlayer player : players) {
+                        if (player.blockPosition().distSqr(portalPos) > 16 * 16) continue;
+
+                        ParticleOptions portalParticle = new DustColorTransitionOptions(
+                            new Vector3f(0.27f, 0.0f, 0.58f), // purple
+                            new Vector3f(0.0f, 0.0f, 0.0f), // black
+                            1.5f
+                        );
+
+                        gen.serverLevel.sendParticles(
+                            portalParticle,
+                            portalPos.getX() + 0.5,
+                            portalPos.getY() + 0.5,
+                            portalPos.getZ() + 0.5,
+                            2,
+                            0.3,
+                            0.3,
+                            0.3,
+                            0.0
+                        );
+
+                    }
+                }
+            }
+
+            for (ServerPlayer player : players) {
+                BlockPos feet = player.blockPosition();
+                if (gen.portalPositions.contains(feet) || gen.portalPositions.contains(feet.below())) {
+                    handlePortalTrigger(player, dimId, server);
+                }
+            }
+        }
+    }
+
+    private void handlePortalTrigger(ServerPlayer player, ResourceLocation fromDim, MinecraftServer server) {
+
+        // backrooms -> overworld
+
+        // TODO: more dimensions? more schematic themes etc
+        if (fromDim.equals(ResourceLocation.parse("liminalness:dim_backrooms"))) {
+            ServerLevel overworld = server.getLevel(Level.OVERWORLD);
+            if (overworld == null) return;
+
+            OverworldPosition saved = savedPositions.remove(player.getUUID());
+
+            double x = saved != null ? saved.x() : overworld.getSharedSpawnPos().getX() + 0.5;
+            double y = saved != null ? saved.y() : overworld.getSharedSpawnPos().getY();
+            double z = saved != null ? saved.z() : overworld.getSharedSpawnPos().getZ() + 0.5;
+            float yRot = saved != null ? saved.yRot() : player.getYRot();
+            float xRot = saved != null ? saved.xRot() : player.getXRot();
+
+            player.teleportTo(overworld, x, y, z, Set.of(), yRot, xRot);
+
+            final double fx = x, fy = y, fz = z;
+            final float fyRot = yRot, fxRot = xRot;
+            server.execute(() -> player.connection.teleport(fx, fy, fz, fyRot, fxRot));
         }
     }
 
@@ -198,6 +299,14 @@ public class liminalness {
                     return;
                 }
 
+                savedPositions.put(player.getUUID(), new OverworldPosition(
+                        player.getX(),
+                        player.getY(),
+                        player.getZ(),
+                        player.getYRot(),
+                        player.getXRot()
+                ));
+
                 player.teleportTo(
                         backrooms,
                         0, 0, 0,
@@ -213,5 +322,4 @@ public class liminalness {
             }
         }
     }
-
 }

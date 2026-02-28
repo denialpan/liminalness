@@ -21,6 +21,7 @@ public class FrontierSavedData extends SavedData {
     private final Set<BlockPos> claimed = new HashSet<>();
     private record RoomRecord(BlockPos origin, String schematicPath) {}
     private static final Set<Long> patchedChunks = new HashSet<>();
+    private final Set<BlockPos> portalPositions = new HashSet<>();
 
     private static String dataName(FrontierChunkGenerator gen) {
         return "frontier_" + gen.getDimensionId().toString().replace(":", "_");
@@ -54,10 +55,13 @@ public class FrontierSavedData extends SavedData {
             patchedChunks.add(((net.minecraft.nbt.LongTag) patchedTag.get(i)).getAsLong());
         }
 
-        liminalness.LOGGER.info("fromNbt — rooms={} claimed={} patched={}",
-                data.rooms.size(),
-                data.claimed.size(),
-                data.patchedChunks.size());
+        ListTag portalsTag = tag.getList("portal_positions", Tag.TAG_COMPOUND);
+        for (int i = 0; i < portalsTag.size(); i++) {
+            CompoundTag p = portalsTag.getCompound(i);
+            data.portalPositions.add(new BlockPos(p.getInt("x"), p.getInt("y"), p.getInt("z")));
+        }
+
+        liminalness.LOGGER.info("frontier saved data — rooms={} claimed={} patched={} portals={}", data.rooms.size(), data.claimed.size(), data.patchedChunks.size(), data.portalPositions.size());
 
         return data;
     }
@@ -68,6 +72,7 @@ public class FrontierSavedData extends SavedData {
         gen.roomOrigins.clear();
         gen.claimed.clear();
         gen.patchedChunks.clear();
+        gen.portalPositions.clear();
 
         for (RoomRecord rr : rooms) {
             SchematicLoader.Schematic schematic = gen.getSchematicByPath(rr.schematicPath());
@@ -80,6 +85,9 @@ public class FrontierSavedData extends SavedData {
 
         gen.claimed.addAll(claimed);
         gen.patchedChunks.addAll(patchedChunks);
+        for (BlockPos pos : portalPositions) {
+            gen.portalPositions.add(pos);
+        }
 
         liminalness.LOGGER.info("frontier saved data - {}: applied save — {} rooms, {} claimed", gen.getDimensionId(), gen.roomOrigins.size(), gen.claimed.size());
     }
@@ -88,6 +96,7 @@ public class FrontierSavedData extends SavedData {
         rooms.clear();
         claimed.clear();
         patchedChunks.clear();
+        portalPositions.clear();
 
         for (var entry : gen.roomOrigins.entrySet()) {
             rooms.add(new RoomRecord(
@@ -98,6 +107,7 @@ public class FrontierSavedData extends SavedData {
 
         claimed.addAll(gen.claimed);
         patchedChunks.addAll(gen.patchedChunks);
+        portalPositions.addAll(gen.portalPositions);
     }
 
     public static void saveNow(ServerLevel level, FrontierChunkGenerator gen) {
@@ -160,6 +170,18 @@ public class FrontierSavedData extends SavedData {
             patchedTag.add(net.minecraft.nbt.LongTag.valueOf(key));
         }
         tag.put("patched_chunks", patchedTag);
+
+        ListTag portalsTag = new ListTag();
+        for (BlockPos pos : portalPositions) {
+            CompoundTag p = new CompoundTag();
+            p.putInt("x", pos.getX());
+            p.putInt("y", pos.getY());
+            p.putInt("z", pos.getZ());
+            portalsTag.add(p);
+        }
+        tag.put("portal_positions", portalsTag);
+
+        liminalness.LOGGER.info("save — rooms={} claimed={} patched={} portals={}", rooms.size(), claimed.size(), patchedChunks.size(), portalPositions.size());
 
         return tag;
     }
