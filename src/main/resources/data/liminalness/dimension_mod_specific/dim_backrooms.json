@@ -6,6 +6,7 @@
   "generation_radius_horizontal": 64,
   "generation_radius_vertical": 64,
   "steps_per_tick": 10,
+  "min_rooms": 100,
   "schematics": [
     {
       "path": "schematics/backrooms_spawn_1.schem",
@@ -15,10 +16,35 @@
       "path": "schematics/backrooms_spawn_2.schem",
       "weight": 1
     },
+
     {
-      "path": "schematics/backrooms_spawnconnector_1.schem",
+      "path": "schematics/backrooms_spawn_3.schem",
       "weight": 1
     },
+    {
+      "path": "schematics/backrooms_spawn_4.schem",
+      "weight": 1
+    },
+
+    {
+      "path": "schematics/backrooms_spawnconnector_1.schem",
+      "weight": 2
+    },
+    {
+      "path": "schematics/backrooms_spawnconnector_2.schem",
+      "weight": 2
+    },
+
+    {
+      "path": "schematics/backrooms_spawnconnector_3.schem",
+      "weight": 2
+    },
+
+    {
+      "path": "schematics/backrooms_spawnconnector_4.schem",
+      "weight": 2
+    },
+
 
     {
       "path": "schematics/backrooms_hall_1.schem",
@@ -42,6 +68,21 @@
 
     {
       "path": "schematics/backrooms_portal_1.schem",
+      "weight": 2
+    },
+
+    {
+      "path": "schematics/backrooms_portal_2.schem",
+      "weight": 2
+    },
+
+    {
+      "path": "schematics/backrooms_portal_3.schem",
+      "weight": 2
+    },
+
+    {
+      "path": "schematics/backrooms_portal_4.schem",
       "weight": 2
     }
   ]

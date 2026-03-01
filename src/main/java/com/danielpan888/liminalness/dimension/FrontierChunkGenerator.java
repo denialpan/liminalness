@@ -63,6 +63,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public int radiusHorizontal = 256;
     public int radiusVertical   = 64;
     public int stepsPerTick     = 10;
+    public int minRooms         = 100;
 
     public record FrontierEntry(
         BlockPos attachPoint,
@@ -99,6 +100,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         radiusHorizontal = dimensionConfig.generationRadiusHorizontal();
         radiusVertical   = dimensionConfig.generationRadiusVertical();
         stepsPerTick     = dimensionConfig.stepsPerTick();
+        minRooms         = dimensionConfig.minRooms();
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
             SchematicLoader.Schematic s = entry.schematic();
@@ -216,7 +218,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         List<BlockPos> playerPositions = serverLevel.players().stream().map(p -> p.blockPosition()).toList();
         if (playerPositions.isEmpty()) return;
-        List<BlockPos> referencePoints = playerPositions.isEmpty() ? List.of(new BlockPos(0, generationY, 0)) : playerPositions;
 
         int checked   = 0;
         int processed = 0;
@@ -226,7 +227,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             FrontierEntry entry = frontiers.poll();
             checked++;
             if (claimed.contains(entry.attachPoint())) continue;
-            if (isInRange(entry.attachPoint(), referencePoints)) {
+
+            boolean inRange = roomOrigins.size() < minRooms || isInRange(entry.attachPoint(), playerPositions);
+
+            if (inRange) {
                 expandFrontier(entry);
                 processed++;
             } else {
@@ -259,54 +263,88 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             return;
         }
 
-        SchematicLoader.Schematic candidate = pickCandidate(entry.attachPoint(), entry.incomingFacing(), entry.width(), entry.height());
+        // all candidates that match this connection
+        List<SchematicLoader.Schematic> candidates = weightedPool.stream()
+            .filter(s -> s.connectionPoints().stream()
+            .anyMatch(connectionPoint -> connectionPoint.facing() == entry.incomingFacing().getOpposite()
+                && connectionPoint.width() == entry.width()
+                && connectionPoint.height() == entry.height()))
+            .toList();
 
-        if (candidate == null) {
+        if (candidates.isEmpty()) {
             claimed.add(entry.attachPoint());
             return;
         }
 
-        SchematicLoader.ConnectionPoint matchingConnectionPoint = null;
-        for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
-            if (connectionPoint.facing()  == entry.incomingFacing().getOpposite()
+        long hash = worldSeed;
+        hash ^= (long) entry.attachPoint().getX() * 0x9E3779B97F4A7C15L;
+        hash ^= (long) entry.attachPoint().getY() * 0x6C62272E07BB0142L;
+        hash ^= (long) entry.attachPoint().getZ() * 0xD2A98B26625EEE7BL;
+        hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
+
+        List<SchematicLoader.Schematic> shuffled = new ArrayList<>(candidates);
+        for (int i = shuffled.size() - 1; i > 0; i--) {
+            hash = Long.rotateLeft(hash, 17) * 0x94D049BB133111EBL;
+            int j = (int) Long.remainderUnsigned(hash, i + 1);
+            SchematicLoader.Schematic tmp = shuffled.get(i);
+            shuffled.set(i, shuffled.get(j));
+            shuffled.set(j, tmp);
+        }
+
+        for (SchematicLoader.Schematic candidate : shuffled) {
+            SchematicLoader.ConnectionPoint matchingConnectionPoint = candidate.connectionPoints().stream()
+                .filter(connectionPoint -> connectionPoint.facing()  == entry.incomingFacing().getOpposite()
                     && connectionPoint.width()   == entry.width()
-                    && connectionPoint.height()  == entry.height()) {
-                matchingConnectionPoint = connectionPoint;
-                break;
+                    && connectionPoint.height()  == entry.height())
+                .findFirst().orElse(null);
+
+            if (matchingConnectionPoint == null) continue;
+
+            BlockPos candidateOrigin = entry.attachPoint().subtract(matchingConnectionPoint.corner());
+
+            int[] extents = getExtents(candidate);
+            if (candidateOrigin.getY() < minGenerationY ||
+                    candidateOrigin.getY() + extents[1] > maxGenerationY) continue;
+
+            if (overlapsAny(candidate, candidateOrigin)) continue;
+
+            if (roomOrigins.size() < minRooms) {
+                int newConnections = countNewConnections(candidate, candidateOrigin);
+                if (newConnections == 0) {
+                    continue;
+                }
             }
-        }
-        if (matchingConnectionPoint == null) {
-            claimed.add(entry.attachPoint());
-            return;
-        }
 
-        BlockPos candidateOrigin = entry.attachPoint().subtract(matchingConnectionPoint.corner());
-
-        int[] extents = getExtents(candidate);
-        if (candidateOrigin.getY() < minGenerationY ||
-                candidateOrigin.getY() + extents[1] > maxGenerationY) {
             claimed.add(entry.attachPoint());
-            return;
-        }
+            roomOrigins.put(candidateOrigin, candidate);
+            writeToWorld(candidateOrigin, candidate);
+            registerBlockMarkers(candidateOrigin, candidate);
 
-        if (overlapsAny(candidate, candidateOrigin)) {
-            claimed.add(entry.attachPoint());
+            for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
+                BlockPos worldCorner = candidateOrigin.offset(connectionPoint.corner());
+                BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
+                if (!claimed.contains(attachPoint)) {
+                    frontiers.add(new FrontierEntry(
+                            attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()));
+                }
+            }
+
             return;
         }
 
         claimed.add(entry.attachPoint());
-        roomOrigins.put(candidateOrigin, candidate);
-        writeToWorld(candidateOrigin, candidate);
-        registerBlockMarkers(candidateOrigin, candidate);
+    }
 
+    private int countNewConnections(SchematicLoader.Schematic candidate, BlockPos origin) {
+        int count = 0;
         for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
-            BlockPos worldCorner = candidateOrigin.offset(connectionPoint.corner());
+            BlockPos worldCorner = origin.offset(connectionPoint.corner());
             BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
             if (!claimed.contains(attachPoint)) {
-                frontiers.add(new FrontierEntry(
-                        attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()));
+                count++;
             }
         }
+        return Math.max(0, count - 1);
     }
 
     private void writeToWorld(BlockPos origin, SchematicLoader.Schematic schematic) {

@@ -10,6 +10,7 @@ public record DimensionConfig(
     int generationRadiusHorizontal,
     int generationRadiusVertical,
     int stepsPerTick,
+    int minRooms,
     List<SchematicEntry> schematics
 ) {
     public record SchematicEntry(

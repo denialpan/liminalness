@@ -25,6 +25,7 @@ public class DimensionConfigLoader {
         int radiusHorizontal = json.get("generation_radius_horizontal").getAsInt();
         int radiusVertical   = json.get("generation_radius_vertical").getAsInt();
         int stepsPerTick     = json.get("steps_per_tick").getAsInt();
+        int minRooms = json.has("min_rooms") ? json.get("min_rooms").getAsInt() : 100;
 
         JsonArray schematicsJson = json.getAsJsonArray("schematics");
         List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
@@ -49,7 +50,7 @@ public class DimensionConfigLoader {
 
         return new DimensionConfig(
             dimension, generationY, minY, maxY,
-            radiusHorizontal, radiusVertical, stepsPerTick,
+            radiusHorizontal, radiusVertical, stepsPerTick, minRooms,
             entries
         );
     }
