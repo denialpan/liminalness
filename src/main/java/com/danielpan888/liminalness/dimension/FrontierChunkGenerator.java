@@ -364,31 +364,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             }
         }
 
-        for (var block : schematic.blocks().entrySet()) {
+        for (var block : schematic.finalBlocks().entrySet()) {
             BlockPos world = origin.offset(block.getKey());
-            if (serverLevel.isLoaded(world))
-                serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
-        }
-
-        for (BlockPos marker : schematic.markers()) {
-            BlockPos world = origin.offset(marker);
-            if (serverLevel.isLoaded(world))
-                serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
-        }
-
-        for (var block : schematic.blocks().entrySet()) {
-            if (block.getKey() == null || block.getValue() == null) continue;
-            BlockPos world = origin.offset(block.getKey());
-            if (world == null) continue;
             if (!serverLevel.isLoaded(world)) continue;
-
-            if (block.getValue().is(PORTAL_MARKER)) {
-                serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
-            } else if (block.getValue().is(CHEST_MARKER)) {
-                ChestLootHandler.fillChest(serverLevel, world, worldSeed);
-                chestPositions.add(world);
-                consumedChests.add(world);
-            }
+            serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
         }
     }
 
@@ -422,38 +401,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             if (origin.getX() + e[0] < minX || origin.getX() >= maxX) continue;
             if (origin.getZ() + e[2] < minZ || origin.getZ() >= maxZ) continue;
 
-            for (var block : schematic.blocks().entrySet()) {
+            for (var block : schematic.finalBlocks().entrySet()) {
                 BlockPos world = origin.offset(block.getKey());
                 if (world.getX() < minX || world.getX() >= maxX) continue;
                 if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
                 mutable.set(world);
                 chunk.setBlockState(mutable, block.getValue(), false);
-            }
-
-            for (BlockPos marker : schematic.markers()) {
-                BlockPos world = origin.offset(marker);
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-                mutable.set(world);
-                chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
-            }
-
-            for (var block : schematic.blocks().entrySet()) {
-                if (block.getKey() == null || block.getValue() == null) continue;
-                BlockPos world = origin.offset(block.getKey());
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-                mutable.set(world);
-
-                if (block.getValue().is(FrontierChunkGenerator.PORTAL_MARKER)) {
-                    liminalness.LOGGER.debug("frontier generator - portal marker at {} -> air", world);
-                    chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
-                } else if (block.getValue().is(FrontierChunkGenerator.CHEST_MARKER)) {
-                    liminalness.LOGGER.debug("frontier generator - chest marker at {} -> air", world);
-                    chunk.setBlockState(mutable, Blocks.AIR.defaultBlockState(), false);
-                } else {
-                    chunk.setBlockState(mutable, block.getValue(), false);
-                }
             }
         }
 
@@ -462,40 +415,17 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         return CompletableFuture.completedFuture(chunk);
     }
 
-    private SchematicLoader.Schematic pickCandidate(BlockPos attachPoint, Direction incomingFacing, int width, int height) {
-
-        // filter weighted pool only matching schematics
-        List<SchematicLoader.Schematic> matching = weightedPool.stream()
-            .filter(s -> s.connectionPoints().stream()
-            .anyMatch(connectionPoint -> connectionPoint.facing() == incomingFacing.getOpposite()
-                            && connectionPoint.width()   == width
-                            && connectionPoint.height()  == height))
-            .toList();
-
-        if (matching.isEmpty()) return null;
-
-        long hash = worldSeed;
-        hash ^= (long) attachPoint.getX() * 0x9E3779B97F4A7C15L;
-        hash ^= (long) attachPoint.getY() * 0x6C62272E07BB0142L;
-        hash ^= (long) attachPoint.getZ() * 0xD2A98B26625EEE7BL;
-        hash  = Long.rotateLeft(hash, 31)  * 0x94D049BB133111EBL;
-
-        return matching.get((int) Long.remainderUnsigned(hash, matching.size()));
-    }
-
     private void registerBlockMarkers(BlockPos origin, SchematicLoader.Schematic schematic) {
-        for (var block : schematic.blocks().entrySet()) {
-            if (block.getValue() == null) continue;
-            BlockPos world = origin.offset(block.getKey());
 
-            if (block.getValue().is(PORTAL_MARKER)) {
-                portalPositions.add(world);
-                liminalness.LOGGER.debug("frontier generator - register portal at {}", world);
-            } else if (block.getValue().is(CHEST_MARKER)) {
-                chestPositions.add(world);
-                liminalness.LOGGER.debug("frontier generator - register chest at {}", world);
-            }
+        for (BlockPos local : schematic.portalPositions()) {
+            liminalness.LOGGER.debug("frontier generator - register portal at {}", local);
+            portalPositions.add(origin.offset(local));
         }
+        for (BlockPos local : schematic.chestPositions()) {
+            liminalness.LOGGER.debug("frontier generator - register chest at {}", local);
+            chestPositions.add(origin.offset(local));
+        }
+
     }
 
     // --- utils ---

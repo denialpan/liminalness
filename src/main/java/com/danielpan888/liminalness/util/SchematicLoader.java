@@ -28,7 +28,13 @@ public class SchematicLoader {
     public record Schematic(
         Map<BlockPos, BlockState> blocks,
         List<ConnectionPoint> connectionPoints,
-        Set<BlockPos> markers  // add this
+        Set<BlockPos> markers,
+
+        // preresolve this
+        Map<BlockPos, BlockState> finalBlocks,
+        Set<BlockPos> portalPositions,
+        Set<BlockPos> chestPositions
+
     ) {}
 
     public static Schematic load(InputStream stream) throws Exception {
@@ -56,8 +62,6 @@ public class SchematicLoader {
             palette[paletteTag.getInt(key)] = parseBlockState(key);
         }
 
-        // parse blocks, MARKERS ARE LIME_WOOL
-        // TODO: possible config change marker to other uncommon building block...? nah probably not
         Map<BlockPos, BlockState> rawBlocks  = new HashMap<>();
         Set<BlockPos> rawMarkers = new HashSet<>();
 
@@ -95,6 +99,31 @@ public class SchematicLoader {
             markers.add(normalize(p, minX, minY, minZ));
         }
 
+        Map<BlockPos, BlockState> finalBlocks = new HashMap<>();
+        Set<BlockPos> portalPositions = new HashSet<>();
+        Set<BlockPos> chestPositions  = new HashSet<>();
+
+
+        for (var entry : blocks.entrySet()) {
+            BlockPos pos = entry.getKey();
+            BlockState state = entry.getValue();
+
+            if (state.is(Blocks.LIME_WOOL)) {
+                finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
+            } else if (state.getBlock() == Blocks.END_PORTAL_FRAME) {
+                portalPositions.add(pos);
+                finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
+            } else if (state.getBlock() == Blocks.ORANGE_WOOL) {
+                chestPositions.add(pos);
+                finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
+            } else {
+                finalBlocks.put(pos, state);
+            }
+        }
+
+        for (BlockPos marker : markers) {
+            finalBlocks.put(marker, Blocks.AIR.defaultBlockState());
+        }
 
         // fill interior air
         int maxX = blocks.keySet().stream().mapToInt(BlockPos::getX).max().orElse(0);
@@ -106,7 +135,7 @@ public class SchematicLoader {
                 for (int z = 0; z <= maxZ; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     if (!blocks.containsKey(pos) && !markers.contains(pos)) {
-                        blocks.put(pos, Blocks.AIR.defaultBlockState());
+                        finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
                     }
                 }
             }
@@ -121,7 +150,7 @@ public class SchematicLoader {
             liminalness.LOGGER.info("|---{}", connectionPoint);
         }
 
-        return new Schematic(blocks, connectionPoints, markers);
+        return new Schematic(blocks, connectionPoints, markers, finalBlocks, portalPositions, chestPositions);
     }
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {

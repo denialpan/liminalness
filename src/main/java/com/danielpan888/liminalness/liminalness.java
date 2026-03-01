@@ -130,7 +130,7 @@ public class liminalness {
             if (origin.getX() + e[0] < minX || origin.getX() >= maxX) continue;
             if (origin.getZ() + e[2] < minZ || origin.getZ() >= maxZ) continue;
 
-            for (var block : schematic.blocks().entrySet()) {
+            for (var block : schematic.finalBlocks().entrySet()) {
                 BlockPos world = origin.offset(block.getKey());
                 if (world.getX() < minX || world.getX() >= maxX) continue;
                 if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
@@ -140,31 +140,13 @@ public class liminalness {
                 gen.serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
             }
 
-            for (BlockPos marker : schematic.markers()) {
-                BlockPos world = origin.offset(marker);
+            for (BlockPos local : schematic.chestPositions()) {
+                BlockPos world = origin.offset(local);
                 if (world.getX() < minX || world.getX() >= maxX) continue;
                 if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-
-                BlockState existing = gen.serverLevel.getBlockState(world);
-                if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
-                gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
-            }
-
-            for (var block : schematic.blocks().entrySet()) {
-                if (block.getKey() == null || block.getValue() == null) continue;
-                BlockPos world = origin.offset(block.getKey());
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-
-                if (block.getValue().is(FrontierChunkGenerator.PORTAL_MARKER)) {
-                    BlockState existing = gen.serverLevel.getBlockState(world);
-                    if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
-                    gen.serverLevel.setBlock(world, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
-                } else if (block.getValue().is(FrontierChunkGenerator.CHEST_MARKER)) {
-                    if (gen.consumedChests.contains(world)) continue;
-                    ChestLootHandler.fillChest(gen.serverLevel, world, gen.worldSeed);
-                    gen.consumedChests.add(world);
-                }
+                if (gen.consumedChests.contains(world)) continue;
+                ChestLootHandler.fillChest(gen.serverLevel, world, gen.worldSeed);
+                gen.consumedChests.add(world);
             }
         }
 
@@ -183,6 +165,7 @@ public class liminalness {
             List<ServerPlayer> players = new ArrayList<>(gen.serverLevel.players());
 
             if (particleTick >= PARTICLE_INTERVAL) {
+                particleTick = 0;
                 for (BlockPos portalPos : gen.portalPositions) {
                     for (ServerPlayer player : players) {
                         if (player.blockPosition().distSqr(portalPos) > 16 * 16) continue;
