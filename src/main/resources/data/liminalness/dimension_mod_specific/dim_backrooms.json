@@ -9,7 +9,11 @@
   "schematics": [
     {
       "path": "schematics/backrooms_spawn_1.schem",
-      "weight": 0
+      "weight": 1
+    },
+    {
+      "path": "schematics/backrooms_spawn_2.schem",
+      "weight": 1
     },
     {
       "path": "schematics/backrooms_spawnconnector_1.schem",
@@ -33,12 +37,12 @@
 
     {
       "path": "schematics/backrooms_hall_intersection_1.schem",
-      "weight": 3
+      "weight": 5
     },
 
     {
       "path": "schematics/backrooms_portal_1.schem",
-      "weight": 1
+      "weight": 2
     }
   ]
 }

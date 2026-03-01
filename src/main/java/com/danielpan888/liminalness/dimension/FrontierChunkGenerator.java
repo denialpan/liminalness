@@ -54,6 +54,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private final Map<String, SchematicLoader.Schematic> pathToSchematic = new HashMap<>();
     protected List<SchematicLoader.Schematic> schematics = new ArrayList<>();
     protected List<SchematicLoader.Schematic> weightedPool = new ArrayList<>();
+    protected List<SchematicLoader.Schematic> spawnPool = new ArrayList<>();
 
     // default if no config
     public int generationY      = 20;
@@ -104,6 +105,15 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             schematics.add(s);
             schematicPaths.put(s, entry.path());
             pathToSchematic.put(entry.path(), s);
+
+            if (entry.weight() == 0) {
+                continue;
+            }
+
+            if (entry.weight() == 1) {
+                spawnPool.add(s);
+            }
+
             for (int i = 0; i < entry.weight(); i++) {
                 this.weightedPool.add(s);
             }
@@ -135,18 +145,31 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public void seedFresh() {
         if (this.schematics.isEmpty()) return;
         liminalness.LOGGER.info("seeding new generation for: {}", getDimensionId());
-        SchematicLoader.Schematic startSchema = schematics.get(0);
-        int[] extents = getExtents(startSchema);
 
+        // Pick spawn room from weight-1 pool, fall back to weightedPool if empty
+        List<SchematicLoader.Schematic> pool = spawnPool.isEmpty() ? weightedPool : spawnPool;
+        if (pool.isEmpty()) return;
+
+        long hash = worldSeed;
+        hash ^= getDimensionId().toString().hashCode();
+        hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
+        SchematicLoader.Schematic startSchema = pool.get(
+                (int) Long.remainderUnsigned(hash, pool.size())
+        );
+
+        int[] extents = getExtents(startSchema);
         BlockPos startPos = new BlockPos(
             -(extents[0] / 2),
             generationY - (extents[1] / 2),
             -(extents[2] / 2)
         );
 
-        this.roomOrigins.put(startPos, startSchema);
+        roomOrigins.put(startPos, startSchema);
+        registerBlockMarkers(startPos, startSchema);
         seedFrontier(startPos, startSchema);
         resume();
+
+        liminalness.LOGGER.info("{}: seeded with {} at {}", getDimensionId(), getPathBySchematic(startSchema), startPos);
     }
 
     public void seedFrontier(BlockPos origin, SchematicLoader.Schematic schematic) {

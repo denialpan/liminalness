@@ -106,7 +106,6 @@ public class ChestLootHandler {
 
     private static List<Holder<Enchantment>> getEnchantmentPool(ServerLevel level) {
         List<Holder<Enchantment>> pool = new ArrayList<>();
-        // Look up enchantments from the level's registry — includes modded enchantments
         var registry = level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
         registry.listElements().forEach(pool::add);
         return pool;
