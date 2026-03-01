@@ -3,6 +3,7 @@ package com.danielpan888.liminalness.dimension;
 import com.danielpan888.liminalness.liminalness;
 import com.danielpan888.liminalness.util.ChestLootHandler;
 import com.danielpan888.liminalness.util.DimensionConfig;
+import com.danielpan888.liminalness.util.RoomSpatialIndex;
 import com.danielpan888.liminalness.util.SchematicLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -49,6 +50,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final ArrayDeque<FrontierEntry> frontiers = new ArrayDeque<>();
     public final Map<SchematicLoader.Schematic, int[]> extentsCache = new ConcurrentHashMap<>();
     public final Set<Long> patchedChunks = ConcurrentHashMap.newKeySet();
+    public final RoomSpatialIndex spatialIndex = new RoomSpatialIndex();
+    private final Map<Long, List<SchematicLoader.Schematic>> candidateIndex = new HashMap<>();
 
     private final Map<SchematicLoader.Schematic, String> schematicPaths = new HashMap<>();
     private final Map<String, SchematicLoader.Schematic> pathToSchematic = new HashMap<>();
@@ -92,6 +95,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.schematicPaths.clear();
         this.pathToSchematic.clear();
         this.weightedPool.clear();
+        this.spatialIndex.clear();
 
         worldSeed        = seed;
         generationY      = dimensionConfig.generationY();
@@ -118,6 +122,19 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             for (int i = 0; i < entry.weight(); i++) {
                 this.weightedPool.add(s);
+            }
+        }
+
+        spatialIndex.clear();
+        for (var entry : roomOrigins.entrySet()) {
+            spatialIndex.add(entry.getKey(), getExtents(entry.getValue()));
+        }
+
+        candidateIndex.clear();
+        for (SchematicLoader.Schematic s : weightedPool) {
+            for (SchematicLoader.ConnectionPoint cp : s.connectionPoints()) {
+                long key = connectionSignature(cp.facing(), cp.width(), cp.height());
+                candidateIndex.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
             }
         }
 
@@ -167,6 +184,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         );
 
         roomOrigins.put(startPos, startSchema);
+        spatialIndex.add(startPos, getExtents(startSchema));
         registerBlockMarkers(startPos, startSchema);
         seedFrontier(startPos, startSchema);
         resume();
@@ -264,12 +282,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         // all candidates that match this connection
-        List<SchematicLoader.Schematic> candidates = weightedPool.stream()
-            .filter(s -> s.connectionPoints().stream()
-            .anyMatch(connectionPoint -> connectionPoint.facing() == entry.incomingFacing().getOpposite()
-                && connectionPoint.width() == entry.width()
-                && connectionPoint.height() == entry.height()))
-            .toList();
+        long key = connectionSignature(entry.incomingFacing().getOpposite(), entry.width(), entry.height());
+        List<SchematicLoader.Schematic> candidates = candidateIndex.getOrDefault(key, List.of());
 
         if (candidates.isEmpty()) {
             claimed.add(entry.attachPoint());
@@ -292,11 +306,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         for (SchematicLoader.Schematic candidate : shuffled) {
-            SchematicLoader.ConnectionPoint matchingConnectionPoint = candidate.connectionPoints().stream()
-                .filter(connectionPoint -> connectionPoint.facing()  == entry.incomingFacing().getOpposite()
-                    && connectionPoint.width()   == entry.width()
-                    && connectionPoint.height()  == entry.height())
-                .findFirst().orElse(null);
+            SchematicLoader.ConnectionPoint matchingConnectionPoint = candidate.connectionPointIndex().get(connectionSignature(entry.incomingFacing().getOpposite(), entry.width(), entry.height()));
 
             if (matchingConnectionPoint == null) continue;
 
@@ -317,6 +327,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             claimed.add(entry.attachPoint());
             roomOrigins.put(candidateOrigin, candidate);
+            spatialIndex.add(candidateOrigin, getExtents(candidate));  // <-- add this
             writeToWorld(candidateOrigin, candidate);
             registerBlockMarkers(candidateOrigin, candidate);
 
@@ -430,20 +441,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     // --- utils ---
 
-    private boolean overlapsAny(SchematicLoader.Schematic candidate, BlockPos origin) {
-        int[] ce = getExtents(candidate);
-        int cMinX = origin.getX(), cMaxX = cMinX + ce[0];
-        int cMinY = origin.getY(), cMaxY = cMinY + ce[1];
-        int cMinZ = origin.getZ(), cMaxZ = cMinZ + ce[2];
+    public static long connectionSignature(Direction facing, int width, int height) {
+        return ((long) facing.ordinal() << 32) | ((long) (width & 0xFFFF) << 16) | (height & 0xFFFF);
+    }
 
-        for (var entry : roomOrigins.entrySet()) {
-            BlockPos o = entry.getKey();
-            int[] pe = getExtents(entry.getValue());
-            if (cMinX < o.getX() + pe[0] && cMaxX > o.getX()
-                    && cMinY < o.getY() + pe[1] && cMaxY > o.getY()
-                    && cMinZ < o.getZ() + pe[2] && cMaxZ > o.getZ()) return true;
-        }
-        return false;
+    private boolean overlapsAny(SchematicLoader.Schematic candidate, BlockPos origin) {
+        return spatialIndex.overlapsAny(origin, getExtents(candidate));
     }
 
     public int[] getExtents(SchematicLoader.Schematic s) {

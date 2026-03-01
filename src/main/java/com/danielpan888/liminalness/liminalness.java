@@ -122,9 +122,10 @@ public class liminalness {
         int minX = chunkPosition.getMinBlockX(), maxX = minX + 16;
         int minZ = chunkPosition.getMinBlockZ(), maxZ = minZ + 16;
 
-        for (var entry : gen.roomOrigins.entrySet()) {
-            BlockPos origin = entry.getKey();
-            SchematicLoader.Schematic schematic = entry.getValue();
+        Set<BlockPos> nearbyRooms = gen.spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
+
+        for (BlockPos origin : nearbyRooms) {
+            SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
             int[] e = gen.getExtents(schematic);
 
             if (origin.getX() + e[0] < minX || origin.getX() >= maxX) continue;

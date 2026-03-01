@@ -16,6 +16,8 @@ import net.minecraft.world.level.block.state.properties.Property;
 import java.io.InputStream;
 import java.util.*;
 
+import static com.danielpan888.liminalness.dimension.FrontierChunkGenerator.connectionSignature;
+
 public class SchematicLoader {
 
     public record ConnectionPoint(BlockPos corner, Direction facing, int width, int height) {
@@ -33,7 +35,9 @@ public class SchematicLoader {
         // preresolve this
         Map<BlockPos, BlockState> finalBlocks,
         Set<BlockPos> portalPositions,
-        Set<BlockPos> chestPositions
+        Set<BlockPos> chestPositions,
+
+        Map<Long, SchematicLoader.ConnectionPoint> connectionPointIndex
 
     ) {}
 
@@ -145,12 +149,17 @@ public class SchematicLoader {
         // find connection points
         List<ConnectionPoint> connectionPoints = detectConnectionPoints(markers, blocks);
 
+        Map<Long, SchematicLoader.ConnectionPoint> connectionPointIndex = new HashMap<>();
+        for (ConnectionPoint connectionPoint : connectionPoints) {
+            connectionPointIndex.put(connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()), connectionPoint);
+        }
+
         liminalness.LOGGER.info("schematic loader - loaded schematic: {} blocks ({} solid + air), {} connection points", blocks.size(), rawBlocks.size(), connectionPoints.size());
         for (ConnectionPoint connectionPoint : connectionPoints) {
             liminalness.LOGGER.info("|---{}", connectionPoint);
         }
 
-        return new Schematic(blocks, connectionPoints, markers, finalBlocks, portalPositions, chestPositions);
+        return new Schematic(blocks, connectionPoints, markers, finalBlocks, portalPositions, chestPositions, connectionPointIndex);
     }
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {
