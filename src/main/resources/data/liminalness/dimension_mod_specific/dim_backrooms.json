@@ -4,8 +4,8 @@
   "min_y": 0,
   "max_y": 512,
   "generation_radius_horizontal": 64,
-  "generation_radius_vertical": 64,
-  "steps_per_tick": 10,
+  "generation_radius_vertical": 32,
+  "steps_per_tick": 3,
   "min_rooms": 100,
   "schematics": [
     {
@@ -52,8 +52,58 @@
     },
 
     {
+      "path": "schematics/backrooms_hall_1_off.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_1_broken_1.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_1_broken_2.schem",
+      "weight": 5
+    },
+
+    {
       "path": "schematics/backrooms_hall_2.schem",
       "weight": 10
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_off.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_broken_1.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_broken_2.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_intersection_1.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_intersection_1_off.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_intersection_1_broken_1.schem",
+      "weight": 5
+    },
+
+    {
+      "path": "schematics/backrooms_hall_intersection_1_broken_2.schem",
+      "weight": 5
     },
 
     {
@@ -62,8 +112,18 @@
     },
 
     {
-      "path": "schematics/backrooms_hall_intersection_1.schem",
-      "weight": 5
+      "path": "schematics/backrooms_loot_room_2.schem",
+      "weight": 3
+    },
+
+    {
+      "path": "schematics/backrooms_loot_room_3.schem",
+      "weight": 3
+    },
+
+    {
+      "path": "schematics/backrooms_loot_room_4.schem",
+      "weight": 3
     },
 
     {
