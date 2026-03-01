@@ -39,9 +39,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public boolean initialized = false;
 
     public final Set<BlockPos> portalPositions = ConcurrentHashMap.newKeySet();
-    public static final Block PORTAL_MARKER = Blocks.END_PORTAL_FRAME;
     public final Set<BlockPos> chestPositions = ConcurrentHashMap.newKeySet();
-    public static final Block CHEST_MARKER = Blocks.ORANGE_WOOL;
 
     public final Set<BlockPos> consumedChests = ConcurrentHashMap.newKeySet();
 
@@ -52,6 +50,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Set<Long> patchedChunks = ConcurrentHashMap.newKeySet();
     public final RoomSpatialIndex spatialIndex = new RoomSpatialIndex();
     private final Map<Long, List<SchematicLoader.Schematic>> candidateIndex = new HashMap<>();
+    public final Set<BlockPos> persistedRooms = ConcurrentHashMap.newKeySet();
+    public final Set<Long> stalePatchedChunks = ConcurrentHashMap.newKeySet();
+
 
     private final Map<SchematicLoader.Schematic, String> schematicPaths = new HashMap<>();
     private final Map<String, SchematicLoader.Schematic> pathToSchematic = new HashMap<>();
@@ -380,6 +381,17 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             if (!serverLevel.isLoaded(world)) continue;
             serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
         }
+
+        for (BlockPos local : schematic.chestPositions()) {
+            BlockPos world = origin.offset(local);
+            if (!serverLevel.isLoaded(world)) {
+                liminalness.LOGGER.warn("frontier generator - chest at {} skipped, chunk not loaded", world);
+                continue;
+            }
+            if (consumedChests.contains(world)) continue;
+            ChestLootHandler.fillChest(serverLevel, world, worldSeed);
+            consumedChests.add(world);
+        }
     }
 
     @Override
@@ -419,7 +431,24 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 mutable.set(world);
                 chunk.setBlockState(mutable, block.getValue(), false);
             }
+
+            for (BlockPos local : schematic.chestPositions()) {
+                BlockPos world = origin.offset(local);
+                if (world.getX() < minX || world.getX() >= maxX) continue;
+                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+                if (consumedChests.contains(world)) continue;
+
+                if (serverLevel != null) {
+                    final BlockPos finalWorld = world;
+                    serverLevel.getServer().execute(() -> {
+                        if (consumedChests.contains(finalWorld)) return;
+                        ChestLootHandler.fillChest(serverLevel, finalWorld, worldSeed);
+                        consumedChests.add(finalWorld);
+                    });
+                }
+            }
         }
+
 
         patchedChunks.add(chunkKey(chunk.getPos().x, chunk.getPos().z));
 

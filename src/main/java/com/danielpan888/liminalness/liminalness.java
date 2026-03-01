@@ -62,7 +62,7 @@ public class liminalness {
     private static final Map<UUID, OverworldPosition> savedPositions = new HashMap<>();
 
     private int particleTick = 0;
-    private static final int PARTICLE_INTERVAL = 20; // every 10 ticks = 0.5 seconds
+    private static final int PARTICLE_INTERVAL = 10;
 
     public liminalness(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
@@ -116,6 +116,9 @@ public class liminalness {
         ChunkPos chunkPosition = event.getPos();
         long key = FrontierChunkGenerator.chunkKey(chunkPosition.x, chunkPosition.z);
 
+        boolean isStale = gen.stalePatchedChunks.remove(key);
+        if (!isStale && gen.patchedChunks.contains(key)) return;
+
         if (gen.patchedChunks.contains(key)) return;
         gen.patchedChunks.add(key);
 
@@ -136,19 +139,27 @@ public class liminalness {
                 if (world.getX() < minX || world.getX() >= maxX) continue;
                 if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
 
+                BlockState target = block.getValue();
                 BlockState existing = gen.serverLevel.getBlockState(world);
+
                 if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
-                gen.serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
+                if (target.isAir()) continue;
+
+                gen.serverLevel.setBlock(world, target, Block.UPDATE_CLIENTS);
             }
 
-            for (BlockPos local : schematic.chestPositions()) {
-                BlockPos world = origin.offset(local);
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-                if (gen.consumedChests.contains(world)) continue;
-                ChestLootHandler.fillChest(gen.serverLevel, world, gen.worldSeed);
-                gen.consumedChests.add(world);
+            if (isStale) {
+                for (BlockPos local : schematic.chestPositions()) {
+                    BlockPos world = origin.offset(local);
+                    if (world.getX() < minX || world.getX() >= maxX) continue;
+                    if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+                    if (gen.consumedChests.contains(world)) continue;
+                    ChestLootHandler.fillChest(gen.serverLevel, world, gen.worldSeed);
+                    gen.consumedChests.add(world);
+                }
             }
+
+
         }
 
     }
@@ -182,7 +193,7 @@ public class liminalness {
                             portalPos.getX() + 0.5,
                             portalPos.getY() + 0.5,
                             portalPos.getZ() + 0.5,
-                            2,
+                            4,
                             0.3,
                             0.3,
                             0.3,
