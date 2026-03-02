@@ -8,6 +8,7 @@
   "steps_per_tick": 3,
   "min_rooms": 100,
   "schematics": [
+
     {
       "path": "schematics/backrooms_spawn_1.schem",
       "weight": 1
@@ -24,6 +25,26 @@
     {
       "path": "schematics/backrooms_spawn_4.schem",
       "weight": 1
+    },
+
+    {
+      "path": "schematics/backrooms_stair_1.schem",
+      "weight": 7
+    },
+
+    {
+      "path": "schematics/backrooms_stair_2.schem",
+      "weight": 7
+    },
+
+    {
+      "path": "schematics/backrooms_stair_3.schem",
+      "weight": 7
+    },
+
+    {
+      "path": "schematics/backrooms_stair_4.schem",
+      "weight": 7
     },
 
     {
@@ -48,7 +69,7 @@
 
     {
       "path": "schematics/backrooms_hall_1.schem",
-      "weight": 10
+      "weight": 30
     },
 
     {
@@ -68,7 +89,7 @@
 
     {
       "path": "schematics/backrooms_hall_2.schem",
-      "weight": 10
+      "weight": 30
     },
 
     {
@@ -88,7 +109,7 @@
 
     {
       "path": "schematics/backrooms_hall_intersection_1.schem",
-      "weight": 5
+      "weight": 15
     },
 
     {
