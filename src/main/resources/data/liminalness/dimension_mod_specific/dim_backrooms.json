@@ -4,10 +4,15 @@
   "min_y": 0,
   "max_y": 512,
   "generation_radius_horizontal": 64,
-  "generation_radius_vertical": 32,
-  "steps_per_tick": 3,
+  "generation_radius_vertical": 16,
+  "steps_per_tick": 10,
   "min_rooms": 100,
   "schematics": [
+
+    {
+      "path": "schematics/backrooms_hole_1.schem",
+      "weight": 1
+    },
 
     {
       "path": "schematics/backrooms_spawn_1.schem",

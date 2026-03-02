@@ -49,7 +49,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Map<SchematicLoader.Schematic, int[]> extentsCache = new ConcurrentHashMap<>();
     public final Set<Long> patchedChunks = ConcurrentHashMap.newKeySet();
     public final RoomSpatialIndex spatialIndex = new RoomSpatialIndex();
+
     private final Map<Long, List<SchematicLoader.Schematic>> candidateIndex = new HashMap<>();
+    private final Map<Long, int[]> candidateCumulativeWeights = new HashMap<>();
+
     public final Set<BlockPos> persistedRooms = ConcurrentHashMap.newKeySet();
     public final Set<Long> stalePatchedChunks = ConcurrentHashMap.newKeySet();
 
@@ -98,6 +101,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.weightedPool.clear();
         this.spatialIndex.clear();
 
+        candidateIndex.clear();
+        candidateCumulativeWeights.clear();
+
         worldSeed        = seed;
         generationY      = dimensionConfig.generationY();
         minGenerationY   = dimensionConfig.minY();
@@ -131,12 +137,31 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             spatialIndex.add(entry.getKey(), getExtents(entry.getValue()));
         }
 
-        candidateIndex.clear();
-        for (SchematicLoader.Schematic s : weightedPool) {
+        Map<Long, Map<SchematicLoader.Schematic, Integer>> uniqueByKey = new HashMap<>();
+
+        for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
+            if (entry.weight() == 0) continue;
+            SchematicLoader.Schematic s = entry.schematic();
             for (SchematicLoader.ConnectionPoint cp : s.connectionPoints()) {
                 long key = connectionSignature(cp.facing(), cp.width(), cp.height());
-                candidateIndex.computeIfAbsent(key, k -> new ArrayList<>()).add(s);
+                uniqueByKey.computeIfAbsent(key, k -> new LinkedHashMap<>()).merge(s, entry.weight(), Math::max);
             }
+        }
+
+        for (var e : uniqueByKey.entrySet()) {
+            long key = e.getKey();
+            List<SchematicLoader.Schematic> schemList = new ArrayList<>(e.getValue().keySet());
+            int[] weights = e.getValue().values().stream().mapToInt(Integer::intValue).toArray();
+
+            // cumulative weights for O(1) weight pick
+            int[] cumulative = new int[weights.length];
+            cumulative[0] = weights[0];
+            for (int i = 1; i < weights.length; i++) {
+                cumulative[i] = cumulative[i - 1] + weights[i];
+            }
+
+            candidateIndex.put(key, schemList);
+            candidateCumulativeWeights.put(key, cumulative);
         }
 
         liminalness.LOGGER.info("frontier generator - initialization complete in: {} with {} schematics and weights: {}", getDimensionId(), schematics.size(), weightedPool.size());
@@ -194,40 +219,32 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     }
 
     public void seedFrontier(BlockPos origin, SchematicLoader.Schematic schematic) {
-        for (SchematicLoader.ConnectionPoint connectionPoint : schematic.connectionPoints()) {
-            BlockPos worldCorner = origin.offset(connectionPoint.corner());
-            BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
-            if (!this.claimed.contains(attachPoint)) {
-                this.frontiers.add(new FrontierEntry(attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()));
+        for (SchematicLoader.ConnectionPoint cp : schematic.connectionPoints()) {
+            BlockPos worldCorner = origin.offset(cp.corner());
+            BlockPos attachPoint = worldCorner.relative(cp.facing(), 1);
+            if (!claimed.contains(attachPoint)) {
+                frontiers.add(new FrontierEntry(attachPoint, cp.facing(), cp.width(), cp.height()));
             }
         }
     }
 
     public void reconstructFrontier() {
         this.frontiers.clear();
-
         for (var entry : this.roomOrigins.entrySet()) {
             BlockPos origin = entry.getKey();
             SchematicLoader.Schematic schematic = entry.getValue();
-
-            for (SchematicLoader.ConnectionPoint connectionPoint : schematic.connectionPoints()) {
-                BlockPos worldCorner = origin.offset(connectionPoint.corner());
-                BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
-
+            for (SchematicLoader.ConnectionPoint cp : schematic.connectionPoints()) {
+                BlockPos worldCorner = origin.offset(cp.corner());
+                BlockPos attachPoint = worldCorner.relative(cp.facing(), 1);
                 if (!this.claimed.contains(attachPoint)) {
-                    this.frontiers.add(new FrontierEntry(
-                            attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()
-                    ));
+                    frontiers.add(new FrontierEntry(attachPoint, cp.facing(), cp.width(), cp.height()));
                 }
             }
         }
-
-        liminalness.LOGGER.info("frontier generator - {} open connections from {} rooms", this.frontiers.size(), roomOrigins.size());
+        liminalness.LOGGER.info("frontier generator - {} open connections from {} rooms", frontiers.size(), roomOrigins.size());
     }
 
-
     public void tick() {
-
         if (!running || serverLevel == null) return;
         if (needsSeed && isReady() && roomOrigins.isEmpty()) {
             needsSeed = false;
@@ -235,28 +252,32 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             return;
         }
 
-        List<BlockPos> playerPositions = serverLevel.players().stream().map(p -> p.blockPosition()).toList();
+        List<BlockPos> playerPositions = serverLevel.players().stream()
+                .map(p -> p.blockPosition()).toList();
         if (playerPositions.isEmpty()) return;
 
-        int checked   = 0;
+        boolean belowMinRooms = roomOrigins.size() < minRooms;
         int processed = 0;
-        int queueSize = frontiers.size();
+        int scanned = 0;
+        int scanLimit = belowMinRooms ? frontiers.size() : Math.min(frontiers.size(), stepsPerTick * 8);
+        List<FrontierEntry> deferred = null;
 
-        while (!frontiers.isEmpty() && processed < stepsPerTick && checked < queueSize) {
+        while (processed < stepsPerTick && scanned < scanLimit && !frontiers.isEmpty()) {
             FrontierEntry entry = frontiers.poll();
-            checked++;
+            scanned++;
+
             if (claimed.contains(entry.attachPoint())) continue;
 
-            boolean inRange = roomOrigins.size() < minRooms || isInRange(entry.attachPoint(), playerPositions);
-
-            if (inRange) {
+            if (belowMinRooms || isInRange(entry.attachPoint(), playerPositions)) {
                 expandFrontier(entry);
                 processed++;
             } else {
-                frontiers.add(entry);
+                if (deferred == null) deferred = new ArrayList<>();
+                deferred.add(entry);
             }
         }
 
+        if (deferred != null) frontiers.addAll(deferred);
     }
 
     private boolean isInRange(BlockPos pos, List<BlockPos> players) {
@@ -274,17 +295,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     private void expandFrontier(FrontierEntry entry) {
 
-        if (claimed.contains(entry.attachPoint())) return;
-
-        int attachY = entry.attachPoint().getY();
-        if (attachY < minGenerationY || attachY > maxGenerationY) {
-            claimed.add(entry.attachPoint());
-            return;
-        }
-
-        // all candidates that match this connection
         long key = connectionSignature(entry.incomingFacing().getOpposite(), entry.width(), entry.height());
         List<SchematicLoader.Schematic> candidates = candidateIndex.getOrDefault(key, List.of());
+        int[] cumulative = candidateCumulativeWeights.get(key);
 
         if (candidates.isEmpty()) {
             claimed.add(entry.attachPoint());
@@ -297,18 +310,20 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         hash ^= (long) entry.attachPoint().getZ() * 0xD2A98B26625EEE7BL;
         hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
 
-        List<SchematicLoader.Schematic> shuffled = new ArrayList<>(candidates);
-        for (int i = shuffled.size() - 1; i > 0; i--) {
-            hash = Long.rotateLeft(hash, 17) * 0x94D049BB133111EBL;
-            int j = (int) Long.remainderUnsigned(hash, i + 1);
-            SchematicLoader.Schematic tmp = shuffled.get(i);
-            shuffled.set(i, shuffled.get(j));
-            shuffled.set(j, tmp);
-        }
+        boolean needsConnections = roomOrigins.size() < minRooms;
+        int size = candidates.size();
+        int totalWeight = cumulative[size - 1];
 
-        for (SchematicLoader.Schematic candidate : shuffled) {
-            SchematicLoader.ConnectionPoint matchingConnectionPoint = candidate.connectionPointIndex().get(connectionSignature(entry.incomingFacing().getOpposite(), entry.width(), entry.height()));
+        hash = Long.rotateLeft(hash, 17) * 0x94D049BB133111EBL;
+        int roll = (int) Long.remainderUnsigned(hash, totalWeight);
+        int startIndex = Arrays.binarySearch(cumulative, roll);
+        if (startIndex < 0) startIndex = ~startIndex;
 
+        for (int i = 0; i < size; i++) {
+
+            SchematicLoader.Schematic candidate = candidates.get((startIndex + i) % size);
+            SchematicLoader.ConnectionPoint matchingConnectionPoint =
+                    candidate.connectionPointIndex().get(key);
             if (matchingConnectionPoint == null) continue;
 
             BlockPos candidateOrigin = entry.attachPoint().subtract(matchingConnectionPoint.corner());
@@ -319,28 +334,22 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             if (overlapsAny(candidate, candidateOrigin)) continue;
 
-            if (roomOrigins.size() < minRooms) {
-                int newConnections = countNewConnections(candidate, candidateOrigin);
-                if (newConnections == 0) {
-                    continue;
-                }
-            }
+            if (needsConnections && countNewConnections(candidate, candidateOrigin) == 0) continue;
 
             claimed.add(entry.attachPoint());
             roomOrigins.put(candidateOrigin, candidate);
-            spatialIndex.add(candidateOrigin, getExtents(candidate));  // <-- add this
+            spatialIndex.add(candidateOrigin, getExtents(candidate));
             writeToWorld(candidateOrigin, candidate);
             registerBlockMarkers(candidateOrigin, candidate);
 
-            for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
-                BlockPos worldCorner = candidateOrigin.offset(connectionPoint.corner());
-                BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
+            for (SchematicLoader.ConnectionPoint cp : candidate.connectionPoints()) {
+                BlockPos worldCorner = candidateOrigin.offset(cp.corner());
+                BlockPos attachPoint = worldCorner.relative(cp.facing(), 1);
                 if (!claimed.contains(attachPoint)) {
                     frontiers.add(new FrontierEntry(
-                            attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()));
+                            attachPoint, cp.facing(), cp.width(), cp.height()));
                 }
             }
-
             return;
         }
 

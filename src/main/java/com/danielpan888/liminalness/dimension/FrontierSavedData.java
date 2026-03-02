@@ -44,6 +44,12 @@ public class FrontierSavedData extends SavedData {
             data.rooms.add(new RoomRecord(new BlockPos(r.getInt("x"), r.getInt("y"), r.getInt("z")), r.getString("schematic")));
         }
 
+        ListTag claimedTag = tag.getList("claimed", Tag.TAG_COMPOUND);
+        for (int i = 0; i < claimedTag.size(); i++) {
+            CompoundTag c = claimedTag.getCompound(i);
+            data.claimed.add(new BlockPos(c.getInt("x"), c.getInt("y"), c.getInt("z")));
+        }
+
         ListTag portalsTag = tag.getList("portal_positions", Tag.TAG_COMPOUND);
         for (int i = 0; i < portalsTag.size(); i++) {
             CompoundTag p = portalsTag.getCompound(i);
@@ -85,6 +91,7 @@ public class FrontierSavedData extends SavedData {
         gen.claimed.addAll(claimed);
         gen.portalPositions.addAll(portalPositions);
         gen.consumedChests.addAll(consumedChests);
+
         gen.stalePatchedChunks.clear();
         for (BlockPos origin : gen.persistedRooms) {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
@@ -97,6 +104,8 @@ public class FrontierSavedData extends SavedData {
                     gen.stalePatchedChunks.add(FrontierChunkGenerator.chunkKey(cx, cz));
         }
 
+        // Rebuild frontier queues from restored state
+        gen.reconstructFrontier();
 
         liminalness.LOGGER.info("frontier saved data - {}: applied save — {} rooms, {} claimed", gen.getDimensionId(), gen.roomOrigins.size(), gen.claimed.size());
     }
@@ -160,6 +169,17 @@ public class FrontierSavedData extends SavedData {
             roomsTag.add(r);
         }
         tag.put("rooms", roomsTag);
+
+        ListTag claimedTag = new ListTag();
+        for (BlockPos pos : claimed) {
+            CompoundTag c = new CompoundTag();
+            c.putInt("x", pos.getX());
+            c.putInt("y", pos.getY());
+            c.putInt("z", pos.getZ());
+            claimedTag.add(c);
+        }
+        tag.put("claimed", claimedTag);
+
 
         ListTag portalsTag = new ListTag();
         for (BlockPos pos : portalPositions) {
