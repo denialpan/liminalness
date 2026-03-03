@@ -61,9 +61,6 @@ public class liminalness {
 
     private static final Map<UUID, OverworldPosition> savedPositions = new HashMap<>();
 
-    private int particleTick = 0;
-    private static final int PARTICLE_INTERVAL = 10;
-
     public liminalness(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
         RegisterChunkGenerator.register(modEventBus);
@@ -166,7 +163,6 @@ public class liminalness {
 
     private void checkPortals(MinecraftServer server) {
 
-        particleTick += 1;
 
         for (var entry : DimensionManager.getInstances().entrySet()) {
             ResourceLocation dimId = entry.getKey();
@@ -176,33 +172,31 @@ public class liminalness {
 
             List<ServerPlayer> players = new ArrayList<>(gen.serverLevel.players());
 
-            if (particleTick >= PARTICLE_INTERVAL) {
-                particleTick = 0;
-                for (BlockPos portalPos : gen.portalPositions) {
-                    for (ServerPlayer player : players) {
-                        if (player.blockPosition().distSqr(portalPos) > 16 * 16) continue;
+            for (BlockPos portalPos : gen.portalPositions) {
+                for (ServerPlayer player : players) {
+                    if (player.blockPosition().distSqr(portalPos) > 16 * 16) continue;
 
-                        ParticleOptions portalParticle = new DustColorTransitionOptions(
-                            new Vector3f(0.27f, 0.0f, 0.58f), // purple
-                            new Vector3f(0.0f, 0.0f, 0.0f), // black
-                            1.5f
-                        );
+                    ParticleOptions portalParticle = new DustColorTransitionOptions(
+                        new Vector3f(0.27f, 0.0f, 0.58f), // purple
+                        new Vector3f(0.0f, 0.0f, 0.0f), // black
+                        1.5f
+                    );
 
-                        gen.serverLevel.sendParticles(
-                            portalParticle,
-                            portalPos.getX() + 0.5,
-                            portalPos.getY() + 0.5,
-                            portalPos.getZ() + 0.5,
-                            4,
-                            0.3,
-                            0.3,
-                            0.3,
-                            0.0
-                        );
+                    gen.serverLevel.sendParticles(
+                        portalParticle,
+                        portalPos.getX() + 0.5,
+                        portalPos.getY() + 0.5,
+                        portalPos.getZ() + 0.5,
+                        4,
+                        0.3,
+                        0.3,
+                        0.3,
+                        0.0
+                    );
 
-                    }
                 }
             }
+
 
             for (ServerPlayer player : players) {
                 BlockPos feet = player.blockPosition();

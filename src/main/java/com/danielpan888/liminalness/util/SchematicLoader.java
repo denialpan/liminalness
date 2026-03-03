@@ -15,12 +15,13 @@ import net.minecraft.world.level.block.state.properties.Property;
 
 import java.io.InputStream;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static com.danielpan888.liminalness.dimension.FrontierChunkGenerator.connectionSignature;
 
 public class SchematicLoader {
 
-    public record ConnectionPoint(BlockPos corner, Direction facing, int width, int height) {
+    public record ConnectionPoint(BlockPos corner, Direction facing, int width, int height, Block markerBlock) {
         @Override
         public String toString() {
             return String.format("connection point {corner=%s, facing=%s, w=%d, h=%d}", corner, facing, width, height);
@@ -37,9 +38,16 @@ public class SchematicLoader {
         Set<BlockPos> portalPositions,
         Set<BlockPos> chestPositions,
 
-        Map<Long, SchematicLoader.ConnectionPoint> connectionPointIndex
+        Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex
 
     ) {}
+
+    public static final Set<Block> MARKER_BLOCKS = Set.of(
+        Blocks.LIME_WOOL,
+        Blocks.CYAN_WOOL,
+        Blocks.LIGHT_BLUE_WOOL,
+        Blocks.PURPLE_WOOL
+    );
 
     public static Schematic load(InputStream stream) throws Exception {
 
@@ -68,6 +76,7 @@ public class SchematicLoader {
 
         Map<BlockPos, BlockState> rawBlocks  = new HashMap<>();
         Set<BlockPos> rawMarkers = new HashSet<>();
+        Map<BlockPos, Block> markerBlockTypes = new HashMap<>();
 
         for (int i = 0; i < blockData.length; i++) {
             int x = (i % width)            + offset[0];
@@ -77,8 +86,9 @@ public class SchematicLoader {
             BlockState state = palette[blockData[i] & 0xFF];
             BlockPos pos = new BlockPos(x, y, z);
 
-            if (state.is(Blocks.LIME_WOOL)) {
+            if (MARKER_BLOCKS.contains(state.getBlock())) {
                 rawMarkers.add(pos);
+                markerBlockTypes.put(pos, state.getBlock());
             } else if (!state.isAir()) {
                 rawBlocks.put(pos, state);
             }
@@ -99,8 +109,11 @@ public class SchematicLoader {
             blocks.put(normalize(e.getKey(), minX, minY, minZ), e.getValue());
         }
 
+        Map<BlockPos, Block> normalizedMarkerBlockTypes = new HashMap<>();
         for (BlockPos p : rawMarkers) {
-            markers.add(normalize(p, minX, minY, minZ));
+            BlockPos normalized = normalize(p, minX, minY, minZ);
+            markers.add(normalized);
+            normalizedMarkerBlockTypes.put(normalized, markerBlockTypes.get(p));
         }
 
         Map<BlockPos, BlockState> finalBlocks = new HashMap<>();
@@ -112,7 +125,7 @@ public class SchematicLoader {
             BlockPos pos = entry.getKey();
             BlockState state = entry.getValue();
 
-            if (state.is(Blocks.LIME_WOOL)) {
+            if (MARKER_BLOCKS.contains(state.getBlock())) {
                 finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
             } else if (state.getBlock() == Blocks.END_PORTAL_FRAME) {
                 portalPositions.add(pos);
@@ -147,11 +160,12 @@ public class SchematicLoader {
 
 
         // find connection points
-        List<ConnectionPoint> connectionPoints = detectConnectionPoints(markers, blocks);
+        List<ConnectionPoint> connectionPoints = detectConnectionPoints(markers, normalizedMarkerBlockTypes, blocks);
 
-        Map<Long, SchematicLoader.ConnectionPoint> connectionPointIndex = new HashMap<>();
+        Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex = new HashMap<>();
         for (ConnectionPoint connectionPoint : connectionPoints) {
-            connectionPointIndex.put(connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height()), connectionPoint);
+            long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.markerBlock());
+            connectionPointIndex.computeIfAbsent(sig, k -> new ArrayList<>()).add(connectionPoint);
         }
 
         liminalness.LOGGER.info("schematic loader - loaded schematic: {} blocks ({} solid + air), {} connection points", blocks.size(), rawBlocks.size(), connectionPoints.size());
@@ -166,7 +180,7 @@ public class SchematicLoader {
         return new BlockPos(p.getX() - minX, p.getY() - minY, p.getZ() - minZ);
     }
 
-    private static List<ConnectionPoint> detectConnectionPoints(Set<BlockPos> markers, Map<BlockPos, BlockState> blocks) {
+    private static List<ConnectionPoint> detectConnectionPoints(Set<BlockPos> markers, Map<BlockPos, Block> markerBlockTypes, Map<BlockPos, BlockState> blocks) {
 
         List<ConnectionPoint> result = new ArrayList<>();
 
@@ -181,6 +195,15 @@ public class SchematicLoader {
         int schMaxZ = all.stream().mapToInt(BlockPos::getZ).max().getAsInt();
 
         for (Set<BlockPos> plane : findConnectedComponents(markers)) {
+
+            Set<Block> typesInPlane = plane.stream().map(markerBlockTypes::get).collect(Collectors.toSet());
+            if (typesInPlane.size() > 1) {
+                liminalness.LOGGER.info("schematic loader - mixed types in marker plane, skipping...");
+                continue;
+            }
+
+            Block markerBlock = typesInPlane.iterator().next();
+
             int minX = plane.stream().mapToInt(BlockPos::getX).min().getAsInt();
             int maxX = plane.stream().mapToInt(BlockPos::getX).max().getAsInt();
             int minY = plane.stream().mapToInt(BlockPos::getY).min().getAsInt();
@@ -209,10 +232,10 @@ public class SchematicLoader {
                 int planeWidth  = maxX - minX + 1;
                 int planeHeight = maxZ - minZ + 1;
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={}", corner, facing, planeWidth, planeHeight);
+                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, markerBlock));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} markertype={}", corner, facing, planeWidth, planeHeight, markerBlock);
 
-            // marker plane flat on x axis (east or west)
+                // marker plane flat on x axis (east or west)
             } else if (spanX == 0 && spanZ > 0) {
 
                 if (minX == schMinX) {
@@ -227,10 +250,10 @@ public class SchematicLoader {
                 int planeWidth  = maxZ - minZ + 1;
                 int planeHeight = maxY - minY + 1;
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={}", corner, facing, planeWidth, planeHeight);
+                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, markerBlock));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} markertype={}", corner, facing, planeWidth, planeHeight, markerBlock);
 
-            // marker plane flat on z axis (north or south)
+                // marker plane flat on z axis (north or south)
             } else if (spanZ == 0 && spanX > 0) {
 
                 if (minZ == schMinZ) {
@@ -245,8 +268,8 @@ public class SchematicLoader {
                 int planeWidth  = maxX - minX + 1;
                 int planeHeight = maxY - minY + 1;
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={}", corner, facing, planeWidth, planeHeight);
+                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, markerBlock));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} markertype={}", corner, facing, planeWidth, planeHeight, markerBlock);
 
             } else {
                 liminalness.LOGGER.warn("schematic loader - skipping, no marker plane on spanX={} spanY={} spanZ={}", spanX, spanY, spanZ);
