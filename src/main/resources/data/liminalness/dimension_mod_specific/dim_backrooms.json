@@ -10,8 +10,49 @@
   "schematics": [
 
     {
-      "path": "schematics/backrooms_spawn_1_1.schem",
+      "path": "schematics/backrooms_spawn_2_1.schem",
       "weight": "1"
+    },
+
+    {
+      "path": "schematics/backrooms_spawn_2_2.schem",
+      "weight": "1"
+    },
+
+    {
+      "path": "schematics/backrooms_spawn_connector_2_1.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_spawn_connector_2_2.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_spawn_connector_2_3.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_spawn_connector_2_4.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_1.schem",
+      "weight": "15"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_2.schem",
+      "weight": "15"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_intersection_4_1.schem",
+      "weight": "10"
     }
+
   ]
 }
