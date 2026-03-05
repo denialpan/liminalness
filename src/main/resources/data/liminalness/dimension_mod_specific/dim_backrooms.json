@@ -92,7 +92,17 @@
     {
       "path": "schematics/backrooms_hall_4_1.schem",
       "weight": "10"
-    }
+    },
 
+
+    {
+      "path": "schematics/backrooms_stairwell_2_1.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_level_2_2_1.schem",
+      "weight": "10"
+    }
   ]
 }
