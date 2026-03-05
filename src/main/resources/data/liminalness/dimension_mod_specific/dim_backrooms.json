@@ -41,16 +41,56 @@
 
     {
       "path": "schematics/backrooms_hall_2_1.schem",
-      "weight": "15"
+      "weight": "10"
     },
 
     {
       "path": "schematics/backrooms_hall_2_2.schem",
-      "weight": "15"
+      "weight": "10"
     },
 
     {
-      "path": "schematics/backrooms_hall_intersection_4_1.schem",
+      "path": "schematics/backrooms_hall_2_3.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_4.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_5.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_2_6.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_3_1.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_3_2.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_3_3.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_3_4.schem",
+      "weight": "10"
+    },
+
+    {
+      "path": "schematics/backrooms_hall_4_1.schem",
       "weight": "10"
     }
 
