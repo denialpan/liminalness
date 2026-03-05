@@ -113,21 +113,19 @@ public class liminalness {
         ChunkPos chunkPosition = event.getPos();
         long key = FrontierChunkGenerator.chunkKey(chunkPosition.x, chunkPosition.z);
 
-        boolean isStale = gen.stalePatchedChunks.remove(key);
-        if (!isStale && gen.patchedChunks.contains(key)) return;
-
-        if (gen.patchedChunks.contains(key)) return;
-        gen.patchedChunks.add(key);
+        if (gen.committedChunks.contains(key)) return;
 
         int minX = chunkPosition.getMinBlockX(), maxX = minX + 16;
         int minZ = chunkPosition.getMinBlockZ(), maxZ = minZ + 16;
 
         Set<BlockPos> nearbyRooms = gen.spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
+        boolean allResolved = true;
 
         for (BlockPos origin : nearbyRooms) {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
-            int[] e = gen.getExtents(schematic);
+            if (schematic == null) { allResolved = false; continue; }
 
+            int[] e = gen.getExtents(schematic);
             if (origin.getX() + e[0] < minX || origin.getX() >= maxX) continue;
             if (origin.getZ() + e[2] < minZ || origin.getZ() >= maxZ) continue;
 
@@ -137,26 +135,16 @@ public class liminalness {
                 if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
 
                 BlockState target = block.getValue();
-                BlockState existing = gen.serverLevel.getBlockState(world);
-
-                if (!existing.is(Blocks.SMOOTH_SANDSTONE)) continue;
-                if (target.isAir()) continue;
-
                 gen.serverLevel.setBlock(world, target, Block.UPDATE_CLIENTS);
             }
 
-            if (isStale) {
-                for (BlockPos local : schematic.chestPositions()) {
-                    BlockPos world = origin.offset(local);
-                    if (world.getX() < minX || world.getX() >= maxX) continue;
-                    if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-                    if (gen.consumedChests.contains(world)) continue;
-                    ChestLootHandler.fillChest(gen.serverLevel, world, gen.worldSeed);
-                    gen.consumedChests.add(world);
-                }
-            }
+        }
 
-
+        if (allResolved) {
+            gen.committedChunks.add(key);
+        } else {
+            // rooms still resolving, mark stale so tick() retries
+            gen.stalePatchedChunks.add(key);
         }
 
     }

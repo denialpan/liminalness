@@ -132,7 +132,7 @@ public class SchematicLoader {
                 finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
             } else if (state.getBlock() == Blocks.ORANGE_WOOL) {
                 chestPositions.add(pos);
-                finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
+                finalBlocks.put(pos, Blocks.CHEST.defaultBlockState());
             } else {
                 finalBlocks.put(pos, state);
             }

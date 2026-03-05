@@ -48,7 +48,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Set<BlockPos> claimed = ConcurrentHashMap.newKeySet();
     public final ArrayDeque<FrontierEntry> frontiers = new ArrayDeque<>();
     public final Map<SchematicLoader.Schematic, int[]> extentsCache = new ConcurrentHashMap<>();
-    public final Set<Long> patchedChunks = ConcurrentHashMap.newKeySet();
+
+    public final Set<Long> committedChunks = ConcurrentHashMap.newKeySet();
+    public final Set<Long> pendingChunks = ConcurrentHashMap.newKeySet();
+
     public final RoomSpatialIndex spatialIndex = new RoomSpatialIndex();
 
     private final Map<Long, List<SchematicLoader.Schematic>> candidateIndex = new HashMap<>();
@@ -247,6 +250,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     }
 
     public void tick() {
+
         if (!running || serverLevel == null) return;
         if (needsSeed && isReady() && roomOrigins.isEmpty()) {
             needsSeed = false;
@@ -258,6 +262,49 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 .map(p -> p.blockPosition()).toList();
         if (playerPositions.isEmpty()) return;
 
+        if (!stalePatchedChunks.isEmpty()) {
+            for (var player : serverLevel.players()) {
+                int playerChunkX = player.blockPosition().getX() >> 4;
+                int playerChunkZ = player.blockPosition().getZ() >> 4;
+                int watchRadius = serverLevel.getServer().getPlayerList().getViewDistance();
+
+                for (int cx = playerChunkX - watchRadius; cx <= playerChunkX + watchRadius; cx++) {
+                    for (int cz = playerChunkZ - watchRadius; cz <= playerChunkZ + watchRadius; cz++) {
+                        long ck = chunkKey(cx, cz);
+                        if (!stalePatchedChunks.remove(ck)) continue;
+                        if (committedChunks.contains(ck)) continue;
+
+                        int minX = cx << 4, maxX = minX + 16;
+                        int minZ = cz << 4, maxZ = minZ + 16;
+
+                        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
+                        boolean allResolved = true;
+
+                        for (BlockPos origin : nearbyRooms) {
+                            SchematicLoader.Schematic schematic = roomOrigins.get(origin);
+                            if (schematic == null) { allResolved = false; continue; }
+
+                            for (var block : schematic.finalBlocks().entrySet()) {
+                                BlockPos world = origin.offset(block.getKey());
+                                if (world.getX() < minX || world.getX() >= maxX) continue;
+                                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+                                if (!serverLevel.isLoaded(world)) { allResolved = false; continue; }
+                                serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
+                            }
+                        }
+
+                        if (allResolved) {
+                            committedChunks.add(ck);
+                            pendingChunks.remove(ck);
+                        } else {
+                            stalePatchedChunks.add(ck);
+                        }
+                    }
+                }
+            }
+        }
+
+        // expand frontier processing
         boolean belowMinRooms = roomOrigins.size() < minRooms;
         int processed = 0;
         int scanned = 0;
@@ -375,20 +422,21 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private void writeToWorld(BlockPos origin, SchematicLoader.Schematic schematic) {
         if (serverLevel == null) return;
 
-        // clear patched status for all chunks this room overlaps
-        // onChunkWatch repatch them with the new room
         int[] extents = getExtents(schematic);
-        int minChunkX = (origin.getX()) >> 4;
+        int minChunkX = origin.getX() >> 4;
         int maxChunkX = (origin.getX() + extents[0]) >> 4;
-        int minChunkZ = (origin.getZ()) >> 4;
+        int minChunkZ = origin.getZ() >> 4;
         int maxChunkZ = (origin.getZ() + extents[2]) >> 4;
 
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                patchedChunks.remove(chunkKey(cx, cz));
+                long ck = chunkKey(cx, cz);
+                committedChunks.remove(ck);
+                stalePatchedChunks.add(ck);
             }
         }
 
+        // write directly
         for (var block : schematic.finalBlocks().entrySet()) {
             BlockPos world = origin.offset(block.getKey());
             if (!serverLevel.isLoaded(world)) continue;
@@ -396,15 +444,30 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         for (BlockPos local : schematic.chestPositions()) {
-            BlockPos world = origin.offset(local);
-            if (!serverLevel.isLoaded(world)) {
-                liminalness.LOGGER.warn("frontier generator - chest at {} skipped, chunk not loaded", world);
-                continue;
-            }
+            BlockPos world = origin.offset(local).immutable();
             if (consumedChests.contains(world)) continue;
-            ChestLootHandler.fillChest(serverLevel, world, worldSeed);
             consumedChests.add(world);
+            scheduleChestFill(world, 0);
         }
+    }
+
+    private void scheduleChestFill(BlockPos world, int attempt) {
+        if (attempt > 10) {
+            liminalness.LOGGER.warn("frontier generator - chest at {} failed after 10 attempts", world);
+            return;
+        }
+        serverLevel.getServer().execute(() -> {
+            if (!serverLevel.isLoaded(world)) {
+                scheduleChestFill(world, attempt + 1);
+                return;
+            }
+            var blockEntity = serverLevel.getBlockEntity(world);
+            if (blockEntity == null) {
+                scheduleChestFill(world, attempt + 1);
+                return;
+            }
+            ChestLootHandler.fillChest(serverLevel, world, worldSeed);
+        });
     }
 
     @Override
@@ -424,18 +487,18 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             for (int z = minZ; z < maxZ; z++)
                 for (int y = minGenerationY; y <= maxGenerationY; y++) {
                     mutable.set(x, y, z);
-                    chunk.setBlockState(mutable,
-                            Blocks.SMOOTH_SANDSTONE.defaultBlockState(), false);
+                    chunk.setBlockState(mutable, Blocks.SMOOTH_SANDSTONE.defaultBlockState(), false);
                 }
 
-        // generate rooms
-        for (var entry : roomOrigins.entrySet()) {
-            BlockPos origin = entry.getKey();
-            SchematicLoader.Schematic schematic = entry.getValue();
-            int[] e = getExtents(schematic);
+        Set<BlockPos> roomSnapshot = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
+        boolean allResolved = true;
 
-            if (origin.getX() + e[0] < minX || origin.getX() >= maxX) continue;
-            if (origin.getZ() + e[2] < minZ || origin.getZ() >= maxZ) continue;
+        for (BlockPos origin : roomSnapshot) {
+            SchematicLoader.Schematic schematic = roomOrigins.get(origin);
+            if (schematic == null) {
+                allResolved = false;
+                continue;
+            }
 
             for (var block : schematic.finalBlocks().entrySet()) {
                 BlockPos world = origin.offset(block.getKey());
@@ -444,26 +507,14 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 mutable.set(world);
                 chunk.setBlockState(mutable, block.getValue(), false);
             }
-
-            for (BlockPos local : schematic.chestPositions()) {
-                BlockPos world = origin.offset(local);
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-                if (consumedChests.contains(world)) continue;
-
-                if (serverLevel != null) {
-                    final BlockPos finalWorld = world;
-                    serverLevel.getServer().execute(() -> {
-                        if (consumedChests.contains(finalWorld)) return;
-                        ChestLootHandler.fillChest(serverLevel, finalWorld, worldSeed);
-                        consumedChests.add(finalWorld);
-                    });
-                }
-            }
         }
 
-
-        patchedChunks.add(chunkKey(chunk.getPos().x, chunk.getPos().z));
+        long ck = chunkKey(chunk.getPos().x, chunk.getPos().z);
+        if (allResolved) {
+            committedChunks.add(ck);
+        } else {
+            pendingChunks.add(ck);
+        }
 
         return CompletableFuture.completedFuture(chunk);
     }

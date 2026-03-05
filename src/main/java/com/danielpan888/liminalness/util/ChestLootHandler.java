@@ -10,7 +10,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 import java.util.ArrayList;
@@ -52,18 +51,17 @@ public class ChestLootHandler {
     }
 
     public static void fillChest(ServerLevel level, BlockPos pos, long worldSeed) {
-
         if (level == null || pos == null) return;
-        level.setBlock(pos, Blocks.CHEST.defaultBlockState(), 3);
 
-        if (!(level.getBlockEntity(pos) instanceof ChestBlockEntity chest)) return;
-
-        level.setBlock(pos, Blocks.CHEST.defaultBlockState(), 3);
+        if (!(level.getBlockEntity(pos) instanceof ChestBlockEntity chest)) {
+            liminalness.LOGGER.warn("chest loot handler - no chest block entity at {}, found: {}",
+                    pos, level.getBlockState(pos));
+            return;
+        }
 
         List<Item> pool = getItemPool();
         if (pool.isEmpty()) return;
 
-        // Deterministic random based on position and world seed
         long hash = worldSeed;
         hash ^= (long) pos.getX() * 0x9E3779B97F4A7C15L;
         hash ^= (long) pos.getY() * 0x6C62272E07BB0142L;
@@ -71,10 +69,8 @@ public class ChestLootHandler {
         hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
         Random rand = new Random(hash);
 
-        // 3 - 10 items
         int itemCount = 3 + rand.nextInt(8);
         List<Integer> slots = new ArrayList<>();
-
         for (int i = 0; i < 27; i++) slots.add(i);
 
         List<Holder<Enchantment>> enchantmentPool = getEnchantmentPool(level);
@@ -101,7 +97,7 @@ public class ChestLootHandler {
             chest.setItem(slot, stack);
         }
 
-        liminalness.LOGGER.debug("chest loot handler - chest at {} with {} items", pos, itemCount);
+        liminalness.LOGGER.debug("chest loot handler - filled chest at {} with {} items", pos, itemCount);
     }
 
     private static List<Holder<Enchantment>> getEnchantmentPool(ServerLevel level) {

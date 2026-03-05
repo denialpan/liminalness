@@ -19,6 +19,7 @@ public class FrontierSavedData extends SavedData {
 
     private final List<RoomRecord> rooms   = new ArrayList<>();
     private final Set<BlockPos> claimed = new HashSet<>();
+    private final Set<Long> committed = new HashSet<>();
     private record RoomRecord(BlockPos origin, String schematicPath) {}
     private final Set<BlockPos> portalPositions = new HashSet<>();
     private final Set<BlockPos> consumedChests = new HashSet<>();
@@ -50,6 +51,11 @@ public class FrontierSavedData extends SavedData {
             data.claimed.add(new BlockPos(c.getInt("x"), c.getInt("y"), c.getInt("z")));
         }
 
+        ListTag committedTag = tag.getList("committed_chunks", Tag.TAG_COMPOUND);
+        for (int i = 0; i < committedTag.size(); i++) {
+            data.committed.add(committedTag.getCompound(i).getLong("ck"));
+        }
+
         ListTag portalsTag = tag.getList("portal_positions", Tag.TAG_COMPOUND);
         for (int i = 0; i < portalsTag.size(); i++) {
             CompoundTag p = portalsTag.getCompound(i);
@@ -76,6 +82,7 @@ public class FrontierSavedData extends SavedData {
         gen.consumedChests.clear();
         gen.spatialIndex.clear();
         gen.persistedRooms.clear();
+        gen.committedChunks.clear();
 
         for (RoomRecord rr : rooms) {
             SchematicLoader.Schematic schematic = gen.getSchematicByPath(rr.schematicPath());
@@ -89,6 +96,7 @@ public class FrontierSavedData extends SavedData {
         }
 
         gen.claimed.addAll(claimed);
+        gen.committedChunks.addAll(committed);
         gen.portalPositions.addAll(portalPositions);
         gen.consumedChests.addAll(consumedChests);
 
@@ -115,6 +123,7 @@ public class FrontierSavedData extends SavedData {
         claimed.clear();
         portalPositions.clear();
         consumedChests.clear();
+        committed.clear();
 
         for (var entry : gen.roomOrigins.entrySet()) {
             rooms.add(new RoomRecord(
@@ -126,6 +135,7 @@ public class FrontierSavedData extends SavedData {
         claimed.addAll(gen.claimed);
         portalPositions.addAll(gen.portalPositions);
         consumedChests.addAll(gen.consumedChests);
+        committed.addAll(gen.committedChunks);
 
     }
 
@@ -180,6 +190,13 @@ public class FrontierSavedData extends SavedData {
         }
         tag.put("claimed", claimedTag);
 
+        ListTag committedTag = new ListTag();
+        for (long ck : committed) {
+            CompoundTag c = new CompoundTag();
+            c.putLong("ck", ck);
+            committedTag.add(c);
+        }
+        tag.put("committed_chunks", committedTag);
 
         ListTag portalsTag = new ListTag();
         for (BlockPos pos : portalPositions) {
