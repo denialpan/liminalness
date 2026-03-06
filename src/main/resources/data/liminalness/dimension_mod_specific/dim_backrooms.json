@@ -10,99 +10,79 @@
   "schematics": [
 
     {
-      "path": "schematics/backrooms_spawn_2_1.schem",
+      "path": "schematics/backrooms_level_1_hall_2_1.schem",
       "weight": "1"
     },
 
     {
-      "path": "schematics/backrooms_spawn_2_2.schem",
+      "path": "schematics/backrooms_level_1_hall_2_2.schem",
       "weight": "1"
     },
 
     {
-      "path": "schematics/backrooms_spawn_connector_2_1.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_4_1.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_spawn_connector_2_2.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_2_1.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_spawn_connector_2_3.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_2_2.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_spawn_connector_2_4.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_2_3.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_2_1.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_2_4.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_2_2.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_3_1.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_2_3.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_3_2.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_2_4.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_3_3.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_2_5.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_hall_turn_3_4.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_2_6.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_loot_1.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_3_1.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_loot_2.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_3_2.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_loot_3.schem",
+      "weight": "3"
     },
 
     {
-      "path": "schematics/backrooms_hall_3_3.schem",
-      "weight": "10"
-    },
-
-    {
-      "path": "schematics/backrooms_hall_3_4.schem",
-      "weight": "10"
-    },
-
-    {
-      "path": "schematics/backrooms_hall_4_1.schem",
-      "weight": "10"
-    },
-
-
-    {
-      "path": "schematics/backrooms_stairwell_2_1.schem",
-      "weight": "10"
-    },
-
-    {
-      "path": "schematics/backrooms_level_2_2_1.schem",
-      "weight": "10"
+      "path": "schematics/backrooms_level_1_loot_4.schem",
+      "weight": "3"
     }
+
   ]
 }

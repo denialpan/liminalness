@@ -60,7 +60,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Set<BlockPos> persistedRooms = ConcurrentHashMap.newKeySet();
     public final Set<Long> stalePatchedChunks = ConcurrentHashMap.newKeySet();
 
-
     private final Map<SchematicLoader.Schematic, String> schematicPaths = new HashMap<>();
     private final Map<String, SchematicLoader.Schematic> pathToSchematic = new HashMap<>();
     protected List<SchematicLoader.Schematic> schematics = new ArrayList<>();
