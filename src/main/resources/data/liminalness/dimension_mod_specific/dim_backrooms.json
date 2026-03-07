@@ -11,12 +11,12 @@
 
     {
       "path": "schematics/backrooms_level_1_hall_2_1.schem",
-      "weight": "1"
+      "weight": "2"
     },
 
     {
       "path": "schematics/backrooms_level_1_hall_2_2.schem",
-      "weight": "1"
+      "weight": "2"
     },
 
     {
@@ -64,24 +64,50 @@
       "weight": "3"
     },
 
+
     {
-      "path": "schematics/backrooms_level_1_loot_1.schem",
-      "weight": "3"
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_1.schem",
+      "weight": "2"
     },
 
     {
-      "path": "schematics/backrooms_level_1_loot_2.schem",
-      "weight": "3"
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_2.schem",
+      "weight": "2"
     },
 
     {
-      "path": "schematics/backrooms_level_1_loot_3.schem",
-      "weight": "3"
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_3.schem",
+      "weight": "2"
     },
 
     {
-      "path": "schematics/backrooms_level_1_loot_4.schem",
-      "weight": "3"
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_4.schem",
+      "weight": "2"
+    },
+
+    {
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_5.schem",
+      "weight": "2"
+    },
+
+    {
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_6.schem",
+      "weight": "2"
+    },
+
+    {
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_7.schem",
+      "weight": "2"
+    },
+
+    {
+      "path": "schematics/backrooms_level_1_dirtexhibit_2_8.schem",
+      "weight": "2"
+    },
+
+    {
+      "path": "schematics/backrooms_alpha_room.schem",
+      "weight": "100"
     }
 
   ]

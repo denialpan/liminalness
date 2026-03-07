@@ -3,9 +3,7 @@ package com.danielpan888.liminalness.util;
 import com.danielpan888.liminalness.liminalness;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.*;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -37,6 +35,8 @@ public class SchematicLoader {
         Map<BlockPos, BlockState> finalBlocks,
         Set<BlockPos> portalPositions,
         Set<BlockPos> chestPositions,
+
+        Map<BlockPos, CompoundTag> blockEntityData,
 
         Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex
 
@@ -120,6 +120,30 @@ public class SchematicLoader {
         Set<BlockPos> portalPositions = new HashSet<>();
         Set<BlockPos> chestPositions  = new HashSet<>();
 
+        // parse chest contents
+        Map<BlockPos, CompoundTag> blockEntityData = new HashMap<>();
+        if (blocksTag.contains("BlockEntities")) {
+            ListTag beList = blocksTag.getList("BlockEntities", Tag.TAG_COMPOUND);
+            for (int i = 0; i < beList.size(); i++) {
+                CompoundTag be = beList.getCompound(i);
+                int[] pos = be.getIntArray("Pos");
+                if (pos.length != 3) continue;
+                if (!be.contains("Data")) continue;
+
+                // normalize chest
+                BlockPos rawPos = new BlockPos(
+                        pos[0] + offset[0],
+                        pos[1] + offset[1],
+                        pos[2] + offset[2]
+                );
+                BlockPos normalizedPos = normalize(rawPos, minX, minY, minZ);
+                CompoundTag data = be.getCompound("Data").copy();
+                blockEntityData.put(normalizedPos, data);
+                liminalness.LOGGER.info("schematic loader - block entity at normalized={} items={}", normalizedPos, data.contains("Items") ? data.getList("Items", 10).size() : 0);
+            }
+        }
+        liminalness.LOGGER.info("schematic loader - parsed {} block entities", blockEntityData.size());
+
 
         for (var entry : blocks.entrySet()) {
             BlockPos pos = entry.getKey();
@@ -173,7 +197,7 @@ public class SchematicLoader {
             liminalness.LOGGER.info("|---{}", connectionPoint);
         }
 
-        return new Schematic(blocks, connectionPoints, markers, finalBlocks, portalPositions, chestPositions, connectionPointIndex);
+        return new Schematic(blocks, connectionPoints, markers, finalBlocks, portalPositions, chestPositions, blockEntityData, connectionPointIndex);
     }
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {

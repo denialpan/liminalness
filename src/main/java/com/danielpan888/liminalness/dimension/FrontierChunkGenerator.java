@@ -8,6 +8,7 @@ import com.danielpan888.liminalness.util.SchematicLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.WorldGenRegion;
@@ -391,6 +392,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 writeToWorld(candidateOrigin, candidate);
                 registerBlockMarkers(candidateOrigin, candidate);
 
+                final BlockPos finalOrigin = candidateOrigin;
+                final SchematicLoader.Schematic finalCandidate = candidate;
+                serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalCandidate));
+
                 for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
                     BlockPos worldCorner = candidateOrigin.offset(connectionPoint.corner());
                     BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
@@ -529,6 +534,36 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             chestPositions.add(origin.offset(local));
         }
 
+    }
+
+    private void applyBlockEntities(BlockPos origin, SchematicLoader.Schematic schematic) {
+        if (serverLevel == null) return;
+        if (schematic.blockEntityData().isEmpty()) return;
+
+        for (var entry : schematic.blockEntityData().entrySet()) {
+            BlockPos world = origin.offset(entry.getKey()).immutable();
+            if (!serverLevel.isLoaded(world)) continue;
+
+            BlockState current = serverLevel.getBlockState(world);
+            liminalness.LOGGER.info("applyBlockEntities - pos={} block={}", world, current);
+
+            var blockEntity = serverLevel.getBlockEntity(world);
+            if (blockEntity == null) {
+                liminalness.LOGGER.warn("applyBlockEntities - no block entity at {} ({})", world, current);
+                continue;
+            }
+
+            CompoundTag toApply = entry.getValue().copy();
+            toApply.putInt("x", world.getX());
+            toApply.putInt("y", world.getY());
+            toApply.putInt("z", world.getZ());
+
+            blockEntity.loadWithComponents(toApply, serverLevel.registryAccess());
+            blockEntity.setChanged();
+            serverLevel.sendBlockUpdated(world, current, current, Block.UPDATE_CLIENTS);
+            liminalness.LOGGER.info("applyBlockEntities - applied {} items at {}",
+                    toApply.contains("Items") ? toApply.getList("Items", 10).size() : 0, world);
+        }
     }
 
     // --- utils ---
