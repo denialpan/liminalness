@@ -3,7 +3,6 @@ package com.danielpan888.liminalness;
 import com.danielpan888.liminalness.dimension.DimensionManager;
 import com.danielpan888.liminalness.dimension.FrontierChunkGenerator;
 import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
-import com.danielpan888.liminalness.util.ChestLootHandler;
 import com.danielpan888.liminalness.util.SchematicLoader;
 
 import net.minecraft.core.BlockPos;
@@ -21,7 +20,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.ChunkWatchEvent;
@@ -52,7 +50,6 @@ public class liminalness {
 
     public static final String MODID = "liminalness";
     public static final Logger LOGGER = LogUtils.getLogger();
-
 
     private record OverworldPosition(
         double x, double y, double z,
@@ -143,7 +140,6 @@ public class liminalness {
         if (allResolved) {
             gen.committedChunks.add(key);
         } else {
-            // rooms still resolving, mark stale so tick() retries
             gen.stalePatchedChunks.add(key);
         }
 
