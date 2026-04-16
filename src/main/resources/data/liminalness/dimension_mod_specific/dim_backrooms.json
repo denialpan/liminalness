@@ -15,153 +15,28 @@
     },
 
     {
-      "path": "schematics/backrooms_level_1_hall_2_2.schem",
-      "weight": "2"
-    },
-
-    {
       "path": "schematics/backrooms_level_1_hall_4_1.schem",
-      "weight": "3"
+      "weight": "2"
     },
 
     {
       "path": "schematics/backrooms_level_1_hall_turn_2_1.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_2.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_3.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_4.schem",
-      "weight": "3"
+      "weight": "2"
     },
 
     {
       "path": "schematics/backrooms_level_1_hall_turn_3_1.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_2.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_3.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_4.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_broken_1.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_broken_2.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_broken_3.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_broken_4.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_broken_1.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_broken_2.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_broken_3.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_2_broken_4.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_4_broken_1.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_2_broken_1.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_2_broken_2.schem",
-      "weight": "3"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_1.schem",
       "weight": "2"
     },
 
     {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_2.schem",
+      "path": "schematics/backrooms_level_1_loot_1.schem",
       "weight": "2"
     },
 
     {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_3.schem",
+      "path": "schematics/vertical_test.schem",
       "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_4.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_5.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_6.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_7.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_dirtexhibit_2_8.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_alpha_room.schem",
-      "weight": "5"
     }
 
   ]
