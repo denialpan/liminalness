@@ -9,6 +9,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.properties.Property;
 
 import java.io.InputStream;
@@ -18,6 +20,39 @@ import java.util.stream.Collectors;
 import static com.danielpan888.liminalness.dimension.FrontierChunkGenerator.connectionSignature;
 
 public class SchematicLoader {
+
+    public enum SchematicVariant {
+        BASE_SCHEMATIC("base", Rotation.NONE, null),
+        ROTATION_90("rot90", Rotation.CLOCKWISE_90, null),
+        ROTATION_180("rot180", Rotation.CLOCKWISE_180, null),
+        ROTATION_270("rot270", Rotation.COUNTERCLOCKWISE_90, null),
+        MIRROR_X("mirror_x", Rotation.NONE, Mirror.FRONT_BACK),
+        MIRROR_Z("mirror_z", Rotation.NONE, Mirror.LEFT_RIGHT),
+        MIRROR_X_ROTATION_90("mirror_x_rot90", Rotation.CLOCKWISE_90, Mirror.FRONT_BACK),
+        MIRROR_Z_ROTATION_90("mirror_z_rot90", Rotation.CLOCKWISE_90, Mirror.LEFT_RIGHT);
+
+        private final String suffix;
+        private final Rotation rotation;
+        private final Mirror mirror;
+
+        SchematicVariant(String suffix, Rotation rotation, Mirror mirror) {
+            this.suffix = suffix;
+            this.rotation = rotation;
+            this.mirror = mirror;
+        }
+
+        public String suffix() {
+            return suffix;
+        }
+
+        public Rotation rotation() {
+            return rotation;
+        }
+
+        public Mirror mirror() {
+            return mirror;
+        }
+    }
 
     public record ConnectionPoint(BlockPos corner, Direction facing, int width, int height, Block markerBlock) {
         @Override
@@ -31,7 +66,7 @@ public class SchematicLoader {
         List<ConnectionPoint> connectionPoints,
         Set<BlockPos> markers,
 
-        // preresolve this
+        // preresolve final schematic states
         Map<BlockPos, BlockState> finalBlocks,
         Set<BlockPos> portalPositions,
         Set<BlockPos> chestPositions,
@@ -48,6 +83,17 @@ public class SchematicLoader {
         Blocks.LIGHT_BLUE_WOOL,
         Blocks.PURPLE_WOOL
     );
+
+    public static List<Map.Entry<String, Schematic>> createHorizontalVariants(String basePath, Schematic base) {
+        List<Map.Entry<String, Schematic>> variants = new ArrayList<>();
+        for (SchematicVariant transform : SchematicVariant.values()) {
+            String variantPath = transform == SchematicVariant.BASE_SCHEMATIC
+                    ? basePath
+                    : basePath + "#" + transform.suffix();
+            variants.add(Map.entry(variantPath, transform(base, transform)));
+        }
+        return variants;
+    }
 
     public static Schematic load(InputStream stream) throws Exception {
 
@@ -202,6 +248,244 @@ public class SchematicLoader {
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {
         return new BlockPos(p.getX() - minX, p.getY() - minY, p.getZ() - minZ);
+    }
+
+    private static Schematic transform(Schematic base, SchematicVariant transform) {
+        int maxX = getMaxCoordinate(base.finalBlocks().keySet(), BlockPos::getX);
+        int maxZ = getMaxCoordinate(base.finalBlocks().keySet(), BlockPos::getZ);
+
+        Map<BlockPos, BlockState> blocks = new HashMap<>();
+        for (var entry : base.blocks().entrySet()) {
+            blocks.put(
+                transformPos(entry.getKey(), maxX, maxZ, transform),
+                transformState(entry.getValue(), transform)
+            );
+        }
+
+        Map<BlockPos, BlockState> finalBlocks = new HashMap<>();
+        for (var entry : base.finalBlocks().entrySet()) {
+            finalBlocks.put(
+                transformPos(entry.getKey(), maxX, maxZ, transform),
+                transformState(entry.getValue(), transform)
+            );
+        }
+
+        Set<BlockPos> markers = transformPositions(base.markers(), maxX, maxZ, transform);
+        Set<BlockPos> portalPositions = transformPositions(base.portalPositions(), maxX, maxZ, transform);
+        Set<BlockPos> chestPositions = transformPositions(base.chestPositions(), maxX, maxZ, transform);
+
+        Map<BlockPos, CompoundTag> blockEntityData = new HashMap<>();
+        for (var entry : base.blockEntityData().entrySet()) {
+            blockEntityData.put(
+                transformPos(entry.getKey(), maxX, maxZ, transform),
+                entry.getValue().copy()
+            );
+        }
+
+        List<ConnectionPoint> connectionPoints = new ArrayList<>();
+        for (ConnectionPoint connectionPoint : base.connectionPoints()) {
+            connectionPoints.add(transformConnectionPoint(connectionPoint, maxX, maxZ, transform));
+        }
+
+        return renormalize(
+            blocks,
+            finalBlocks,
+            markers,
+            portalPositions,
+            chestPositions,
+            blockEntityData,
+            connectionPoints
+        );
+    }
+
+    private static int getMaxCoordinate(Collection<BlockPos> positions, java.util.function.ToIntFunction<BlockPos> getter) {
+        return positions.stream().mapToInt(getter).max().orElse(0);
+    }
+
+    private static Set<BlockPos> transformPositions(Set<BlockPos> positions, int maxX, int maxZ, SchematicVariant transform) {
+        Set<BlockPos> transformed = new HashSet<>();
+        for (BlockPos pos : positions) {
+            transformed.add(transformPos(pos, maxX, maxZ, transform));
+        }
+        return transformed;
+    }
+
+    private static BlockPos transformPos(BlockPos pos, int maxX, int maxZ, SchematicVariant transform) {
+        int x = pos.getX();
+        int y = pos.getY();
+        int z = pos.getZ();
+
+        if (transform.mirror() == Mirror.FRONT_BACK) {
+            x = maxX - x;
+        } else if (transform.mirror() == Mirror.LEFT_RIGHT) {
+            z = maxZ - z;
+        }
+
+        return switch (transform.rotation()) {
+            case NONE -> new BlockPos(x, y, z);
+            case CLOCKWISE_90 -> new BlockPos(maxZ - z, y, x);
+            case CLOCKWISE_180 -> new BlockPos(maxX - x, y, maxZ - z);
+            case COUNTERCLOCKWISE_90 -> new BlockPos(z, y, maxX - x);
+        };
+    }
+
+    private static BlockState transformState(BlockState state, SchematicVariant transform) {
+        if (transform.mirror() != null) {
+            state = state.mirror(transform.mirror());
+        }
+        return state.rotate(transform.rotation());
+    }
+
+    private static Direction transformFacing(Direction facing, SchematicVariant transform) {
+        if (transform.mirror() != null) {
+            facing = transform.mirror().mirror(facing);
+        }
+        return transform.rotation().rotate(facing);
+    }
+
+    private static ConnectionPoint transformConnectionPoint(ConnectionPoint connectionPoint, int maxX, int maxZ, SchematicVariant transform) {
+        Set<BlockPos> transformedPlane = new HashSet<>();
+        for (BlockPos pos : getConnectionPlane(connectionPoint)) {
+            transformedPlane.add(transformPos(pos, maxX, maxZ, transform));
+        }
+
+        int minX = transformedPlane.stream().mapToInt(BlockPos::getX).min().orElse(0);
+        int maxPlaneX = transformedPlane.stream().mapToInt(BlockPos::getX).max().orElse(0);
+        int minY = transformedPlane.stream().mapToInt(BlockPos::getY).min().orElse(0);
+        int maxPlaneY = transformedPlane.stream().mapToInt(BlockPos::getY).max().orElse(0);
+        int minZ = transformedPlane.stream().mapToInt(BlockPos::getZ).min().orElse(0);
+        int maxPlaneZ = transformedPlane.stream().mapToInt(BlockPos::getZ).max().orElse(0);
+
+        Direction facing = transformFacing(connectionPoint.facing(), transform);
+        BlockPos corner = new BlockPos(minX, minY, minZ);
+
+        int width;
+        int height;
+
+        if (facing == Direction.UP || facing == Direction.DOWN) {
+            width = maxPlaneX - minX + 1;
+            height = maxPlaneZ - minZ + 1;
+        } else if (facing == Direction.WEST || facing == Direction.EAST) {
+            width = maxPlaneZ - minZ + 1;
+            height = maxPlaneY - minY + 1;
+        } else {
+            width = maxPlaneX - minX + 1;
+            height = maxPlaneY - minY + 1;
+        }
+
+        return new ConnectionPoint(corner, facing, width, height, connectionPoint.markerBlock());
+    }
+
+    private static Set<BlockPos> getConnectionPlane(ConnectionPoint connectionPoint) {
+        Set<BlockPos> plane = new HashSet<>();
+        BlockPos corner = connectionPoint.corner();
+
+        if (connectionPoint.facing() == Direction.UP || connectionPoint.facing() == Direction.DOWN) {
+            for (int dx = 0; dx < connectionPoint.width(); dx++) {
+                for (int dz = 0; dz < connectionPoint.height(); dz++) {
+                    plane.add(corner.offset(dx, 0, dz));
+                }
+            }
+        } else if (connectionPoint.facing() == Direction.WEST || connectionPoint.facing() == Direction.EAST) {
+            for (int dy = 0; dy < connectionPoint.height(); dy++) {
+                for (int dz = 0; dz < connectionPoint.width(); dz++) {
+                    plane.add(corner.offset(0, dy, dz));
+                }
+            }
+        } else {
+            for (int dx = 0; dx < connectionPoint.width(); dx++) {
+                for (int dy = 0; dy < connectionPoint.height(); dy++) {
+                    plane.add(corner.offset(dx, dy, 0));
+                }
+            }
+        }
+
+        return plane;
+    }
+
+    private static Schematic renormalize(
+        Map<BlockPos, BlockState> blocks,
+        Map<BlockPos, BlockState> finalBlocks,
+        Set<BlockPos> markers,
+        Set<BlockPos> portalPositions,
+        Set<BlockPos> chestPositions,
+        Map<BlockPos, CompoundTag> blockEntityData,
+        List<ConnectionPoint> connectionPoints
+    ) {
+        Set<BlockPos> all = new HashSet<>();
+        all.addAll(blocks.keySet());
+        all.addAll(finalBlocks.keySet());
+        all.addAll(markers);
+        all.addAll(portalPositions);
+        all.addAll(chestPositions);
+        all.addAll(blockEntityData.keySet());
+        for (ConnectionPoint connectionPoint : connectionPoints) {
+            all.add(connectionPoint.corner());
+        }
+
+        if (all.isEmpty()) {
+            return new Schematic(Map.of(), List.of(), Set.of(), Map.of(), Set.of(), Set.of(), Map.of(), Map.of());
+        }
+
+        int minX = all.stream().mapToInt(BlockPos::getX).min().orElse(0);
+        int minY = all.stream().mapToInt(BlockPos::getY).min().orElse(0);
+        int minZ = all.stream().mapToInt(BlockPos::getZ).min().orElse(0);
+
+        Map<BlockPos, BlockState> normalizedBlocks = shiftMap(blocks, minX, minY, minZ, false);
+        Map<BlockPos, BlockState> normalizedFinalBlocks = shiftMap(finalBlocks, minX, minY, minZ, false);
+        Set<BlockPos> normalizedMarkers = shiftSet(markers, minX, minY, minZ);
+        Set<BlockPos> normalizedPortalPositions = shiftSet(portalPositions, minX, minY, minZ);
+        Set<BlockPos> normalizedChestPositions = shiftSet(chestPositions, minX, minY, minZ);
+        Map<BlockPos, CompoundTag> normalizedBlockEntityData = shiftMap(blockEntityData, minX, minY, minZ, true);
+
+        List<ConnectionPoint> normalizedConnectionPoints = new ArrayList<>();
+        for (ConnectionPoint connectionPoint : connectionPoints) {
+            normalizedConnectionPoints.add(new ConnectionPoint(
+                normalize(connectionPoint.corner(), minX, minY, minZ),
+                connectionPoint.facing(),
+                connectionPoint.width(),
+                connectionPoint.height(),
+                connectionPoint.markerBlock()
+            ));
+        }
+
+        Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex = new HashMap<>();
+        for (ConnectionPoint connectionPoint : normalizedConnectionPoints) {
+            long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.markerBlock());
+            connectionPointIndex.computeIfAbsent(sig, k -> new ArrayList<>()).add(connectionPoint);
+        }
+
+        return new Schematic(
+            normalizedBlocks,
+            normalizedConnectionPoints,
+            normalizedMarkers,
+            normalizedFinalBlocks,
+            normalizedPortalPositions,
+            normalizedChestPositions,
+            normalizedBlockEntityData,
+            connectionPointIndex
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> Map<BlockPos, T> shiftMap(Map<BlockPos, T> input, int minX, int minY, int minZ, boolean copyCompoundTags) {
+        Map<BlockPos, T> shifted = new HashMap<>();
+        for (var entry : input.entrySet()) {
+            T value = entry.getValue();
+            if (copyCompoundTags && value instanceof CompoundTag tag) {
+                value = (T) tag.copy();
+            }
+            shifted.put(normalize(entry.getKey(), minX, minY, minZ), value);
+        }
+        return shifted;
+    }
+
+    private static Set<BlockPos> shiftSet(Set<BlockPos> input, int minX, int minY, int minZ) {
+        Set<BlockPos> shifted = new HashSet<>();
+        for (BlockPos pos : input) {
+            shifted.add(normalize(pos, minX, minY, minZ));
+        }
+        return shifted;
     }
 
     private static List<ConnectionPoint> detectConnectionPoints(Set<BlockPos> markers, Map<BlockPos, Block> markerBlockTypes, Map<BlockPos, BlockState> blocks) {
