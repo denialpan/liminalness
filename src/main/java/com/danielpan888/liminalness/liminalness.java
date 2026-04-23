@@ -74,7 +74,7 @@ public class liminalness {
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
         long seed = event.getServer().getWorldData().worldGenOptions().seed();
-        DimensionManager.loadConfigs(seed);
+        DimensionManager.loadConfigs(event.getServer(), seed);
     }
 
     @SubscribeEvent

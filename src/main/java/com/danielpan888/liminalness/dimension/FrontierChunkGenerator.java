@@ -34,13 +34,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
-    public abstract ResourceLocation getDimensionId();
     public volatile ServerLevel serverLevel;
     public volatile boolean running = false;
     public boolean needsSeed = false;
     public long worldSeed;
     public boolean initialized = false;
     public volatile BlockPos startingRoomOrigin;
+    public volatile ResourceLocation dimensionId;
 
     public final Set<BlockPos> portalPositions = ConcurrentHashMap.newKeySet();
     public final Set<BlockPos> chestPositions = ConcurrentHashMap.newKeySet();
@@ -99,6 +99,16 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public static long chunkKey(int chunkX, int chunkZ) {
         return ((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL);
+    }
+
+    public ResourceLocation getDimensionId() {
+        if (dimensionId != null) {
+            return dimensionId;
+        }
+        if (serverLevel != null) {
+            return serverLevel.dimension().location();
+        }
+        return ResourceLocation.fromNamespaceAndPath(liminalness.MODID, "unknown");
     }
 
     // --- generation ---

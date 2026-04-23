@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 
 import java.util.Collections;
@@ -30,20 +31,38 @@ public class DimensionManager {
     }
 
     // load dimension configs
-    public static void loadConfigs(long seed) {
+    public static void loadConfigs(MinecraftServer server, long seed) {
         worldSeed = seed;
+        pendingConfigs.clear();
+        discoverDatapackDimensions(server.getResourceManager());
         liminalness.LOGGER.info("dimension manager - load config for dimensions: {}", registeredIds);
 
         for (ResourceLocation dimId : registeredIds) {
-            String configPath = "/data/" + dimId.getNamespace() + "/dimension_mod_specific/" + dimId.getPath() + ".json";
-            liminalness.LOGGER.info("dimension manager - attempting to load config at {}", configPath);
+            ResourceLocation configId = ResourceLocation.fromNamespaceAndPath(dimId.getNamespace(), "dimension_mod_specific/" + dimId.getPath() + ".json");
+            liminalness.LOGGER.info("dimension manager - attempting to load config at {}", configId);
 
             try {
-                DimensionConfig config = DimensionConfigLoader.load(configPath);
+                DimensionConfig config = DimensionConfigLoader.load(configId, server.getResourceManager());
                 pendingConfigs.put(dimId, config);
                 liminalness.LOGGER.info("dimension manager - config loaded for {} with {} schematics", dimId, config.schematics().size());
             } catch (Exception e) {
-                liminalness.LOGGER.error("dimension manager - failed to load config for {} at {}: {}", dimId, configPath, e);
+                liminalness.LOGGER.error("dimension manager - failed to load config for {} at {}: {}", dimId, configId, e);
+            }
+        }
+    }
+
+    private static void discoverDatapackDimensions(ResourceManager resourceManager) {
+        Map<ResourceLocation, net.minecraft.server.packs.resources.Resource> configs = resourceManager.listResources("dimension_mod_specific", id -> id.getPath().endsWith(".json"));
+
+        for (ResourceLocation configId : configs.keySet()) {
+            String path = configId.getPath();
+            if (!path.startsWith("dimension_mod_specific/")) continue;
+
+            String dimensionPath = path.substring("dimension_mod_specific/".length(), path.length() - ".json".length());
+            ResourceLocation dimensionId = ResourceLocation.fromNamespaceAndPath(configId.getNamespace(), dimensionPath);
+
+            if (registeredIds.add(dimensionId)) {
+                liminalness.LOGGER.info("dimension manager - discovered datapack dimension config: {}", dimensionId);
             }
         }
     }
@@ -64,6 +83,7 @@ public class DimensionManager {
                     instances.put(dimId, frontier);
                     generator = frontier;
                     generator.serverLevel = level;
+                    generator.dimensionId = dimId;
                     liminalness.LOGGER.info("dimension manager - found generator for {}", dimId);
                 }
             }
@@ -115,6 +135,7 @@ public class DimensionManager {
 
         instances.put(dimId, gen);
         gen.serverLevel = level;
+        gen.dimensionId = dimId;
 
         liminalness.LOGGER.info("dimension manager - loaded {}", dimId);
     }
@@ -129,6 +150,7 @@ public class DimensionManager {
         gen.pause();
         FrontierSavedData.saveNow(level, gen);
         gen.serverLevel = null;
+        gen.dimensionId = dimId;
         instances.remove(dimId);
 
         liminalness.LOGGER.info("dimension manager - unloaded {}", dimId);
