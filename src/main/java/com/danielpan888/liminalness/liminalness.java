@@ -21,6 +21,7 @@ import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.ChunkWatchEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -276,6 +277,9 @@ public class liminalness {
                     return;
                 }
 
+                FrontierChunkGenerator generator = (FrontierChunkGenerator) DimensionManager.getInstance(backrooms.dimension().location());
+                Vec3 spawnPos = generator != null ? generator.getStartingSpawnPosition() : new Vec3(0.5, 128.0, 0.5);
+
                 savedPositions.put(player.getUUID(), new OverworldPosition(
                     player.getX(),
                     player.getY(),
@@ -286,14 +290,16 @@ public class liminalness {
 
                 player.teleportTo(
                     backrooms,
-                    0, 0, 0,
+                    spawnPos.x,
+                    spawnPos.y,
+                    spawnPos.z,
                     player.getYRot(),
                     player.getXRot()
                 );
 
                 server.execute(() -> {
-                    player.moveTo(0.5, 128.0, 0.5, player.getYRot(), player.getXRot());
-                    player.connection.teleport(0.5, 128.0, 0.5, player.getYRot(), player.getXRot());
+                    player.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
+                    player.connection.teleport(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
                 });
 
             }

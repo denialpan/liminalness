@@ -26,6 +26,7 @@ import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -39,6 +40,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public boolean needsSeed = false;
     public long worldSeed;
     public boolean initialized = false;
+    public volatile BlockPos startingRoomOrigin;
 
     public final Set<BlockPos> portalPositions = ConcurrentHashMap.newKeySet();
     public final Set<BlockPos> chestPositions = ConcurrentHashMap.newKeySet();
@@ -76,6 +78,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public int radiusVertical   = 64;
     public int stepsPerTick     = 10;
     public int minRooms         = 100;
+    public BlockState fillSpaceState = Blocks.SMOOTH_SANDSTONE.defaultBlockState();
 
     public record FrontierEntry(
             BlockPos attachPoint,
@@ -114,6 +117,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.weightedPool.clear();
         this.spawnPool.clear();
         this.spatialIndex.clear();
+        this.startingRoomOrigin = null;
 
         candidateIndex.clear();
         candidateCumulativeWeights.clear();
@@ -122,6 +126,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         generationY      = dimensionConfig.generationY();
         minGenerationY   = dimensionConfig.minY();
         maxGenerationY   = dimensionConfig.maxY();
+        fillSpaceState   = resolveFillSpace(dimensionConfig.fillSpace());
         radiusHorizontal = dimensionConfig.generationRadiusHorizontal();
         radiusVertical   = dimensionConfig.generationRadiusVertical();
         stepsPerTick     = dimensionConfig.stepsPerTick();
@@ -231,12 +236,22 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         );
 
         int[] extents = getExtents(startSchema);
+        long positionHash = hash;
+        int spawnRange = Math.max(radiusHorizontal, 8192);
+
+        positionHash = Long.rotateLeft(positionHash, 17) * 0x94D049BB133111EBL;
+        int startX = randomInRange(positionHash, -spawnRange, spawnRange) - (extents[0] / 2);
+
+        positionHash = Long.rotateLeft(positionHash, 17) * 0x94D049BB133111EBL;
+        int startZ = randomInRange(positionHash, -spawnRange, spawnRange) - (extents[2] / 2);
+
         BlockPos startPos = new BlockPos(
-            -(extents[0] / 2),
+            startX,
             generationY - (extents[1] / 2),
-            -(extents[2] / 2)
+            startZ
         );
 
+        startingRoomOrigin = startPos;
         roomOrigins.put(startPos, startSchema);
         spatialIndex.add(startPos, getExtents(startSchema));
         registerBlockMarkers(startPos, startSchema);
@@ -244,6 +259,131 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         resume();
 
         liminalness.LOGGER.info("{}: seeded with {} at {}", getDimensionId(), getPathBySchematic(startSchema), startPos);
+    }
+
+    private int randomInRange(long hash, int minInclusive, int maxInclusive) {
+        if (maxInclusive <= minInclusive) {
+            return minInclusive;
+        }
+        long span = (long) maxInclusive - minInclusive + 1L;
+        return minInclusive + (int) Long.remainderUnsigned(hash, span);
+    }
+
+    private void restartFromDisconnectedSeed() {
+        List<Map.Entry<BlockPos, SchematicLoader.Schematic>> rooms = new ArrayList<>(roomOrigins.entrySet());
+        if (rooms.isEmpty() || weightedPool.isEmpty()) {
+            return;
+        }
+
+        long hash = worldSeed;
+        hash ^= (long) roomOrigins.size() * 0x9E3779B97F4A7C15L;
+        hash ^= getDimensionId().toString().hashCode();
+        hash = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
+
+        for (int attempt = 0; attempt < Math.min(rooms.size() * 8, 128); attempt++) {
+            hash = Long.rotateLeft(hash, 17) * 0x94D049BB133111EBL;
+            Map.Entry<BlockPos, SchematicLoader.Schematic> anchorEntry =
+                    rooms.get((int) Long.remainderUnsigned(hash, rooms.size()));
+
+            hash = Long.rotateLeft(hash, 17) * 0x94D049BB133111EBL;
+            SchematicLoader.Schematic candidate = weightedPool.get((int) Long.remainderUnsigned(hash, weightedPool.size()));
+
+            BlockPos candidateOrigin = findDisconnectedPlacement(anchorEntry.getKey(), anchorEntry.getValue(), candidate, hash);
+            if (candidateOrigin == null) {
+                continue;
+            }
+
+            roomOrigins.put(candidateOrigin, candidate);
+            spatialIndex.add(candidateOrigin, getExtents(candidate));
+            writeToWorld(candidateOrigin, candidate);
+            registerBlockMarkers(candidateOrigin, candidate);
+            seedFrontier(candidateOrigin, candidate);
+
+            final BlockPos finalOrigin = candidateOrigin;
+            final SchematicLoader.Schematic finalCandidate = candidate;
+            serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalCandidate));
+
+            liminalness.LOGGER.info("frontier generator - restarted disconnected generation with {} at {}", getPathBySchematic(candidate), candidateOrigin);
+            return;
+        }
+    }
+
+    private BlockPos findDisconnectedPlacement(BlockPos anchorOrigin, SchematicLoader.Schematic anchor, SchematicLoader.Schematic candidate, long hash) {
+        int[] anchorExtents = getExtents(anchor);
+        int[] candidateExtents = getExtents(candidate);
+        int gap = 10;
+
+        for (int offset = 0; offset < 4; offset++) {
+            int directionIndex = (int) Long.remainderUnsigned(hash + offset, 4);
+            BlockPos candidateOrigin = switch (directionIndex) {
+                case 0 -> new BlockPos(
+                    anchorOrigin.getX() + anchorExtents[0] + gap,
+                    generationY - (candidateExtents[1] / 2),
+                    anchorOrigin.getZ()
+                );
+                case 1 -> new BlockPos(
+                    anchorOrigin.getX() - candidateExtents[0] - gap,
+                    generationY - (candidateExtents[1] / 2),
+                    anchorOrigin.getZ()
+                );
+                case 2 -> new BlockPos(
+                    anchorOrigin.getX(),
+                    generationY - (candidateExtents[1] / 2),
+                    anchorOrigin.getZ() + anchorExtents[2] + gap
+                );
+                default -> new BlockPos(
+                    anchorOrigin.getX(),
+                    generationY - (candidateExtents[1] / 2),
+                    anchorOrigin.getZ() - candidateExtents[2] - gap
+                );
+            };
+
+            if (candidateOrigin.getY() < minGenerationY ||
+                    candidateOrigin.getY() + candidateExtents[1] > maxGenerationY) {
+                continue;
+            }
+
+            if (!overlapsAny(candidate, candidateOrigin)) {
+                return candidateOrigin;
+            }
+        }
+
+        return null;
+    }
+
+    private BlockState resolveFillSpace(String fillSpace) {
+        ResourceLocation blockId = ResourceLocation.tryParse(fillSpace);
+        if (blockId == null) {
+            liminalness.LOGGER.warn("frontier generator - invalid fill_space '{}' for {}, defaulting to minecraft:smooth_sandstone", fillSpace, getDimensionId());
+            return Blocks.SMOOTH_SANDSTONE.defaultBlockState();
+        }
+
+        Block block = BuiltInRegistries.BLOCK.get(blockId);
+        if (block == Blocks.AIR && !blockId.equals(BuiltInRegistries.BLOCK.getKey(Blocks.AIR))) {
+            liminalness.LOGGER.warn("frontier generator - unknown fill_space '{}' for {}, defaulting to minecraft:smooth_sandstone", fillSpace, getDimensionId());
+            return Blocks.SMOOTH_SANDSTONE.defaultBlockState();
+        }
+
+        return block.defaultBlockState();
+    }
+
+    public Vec3 getStartingSpawnPosition() {
+        BlockPos origin = startingRoomOrigin;
+        if (origin == null) {
+            return new Vec3(0.5, generationY, 0.5);
+        }
+
+        SchematicLoader.Schematic schematic = roomOrigins.get(origin);
+        if (schematic == null) {
+            return new Vec3(origin.getX() + 0.5, generationY, origin.getZ() + 0.5);
+        }
+
+        int[] extents = getExtents(schematic);
+        return new Vec3(
+            origin.getX() + (extents[0] / 2.0) + 0.5,
+            generationY,
+            origin.getZ() + (extents[2] / 2.0) + 0.5
+        );
     }
 
     public void seedFrontier(BlockPos origin, SchematicLoader.Schematic schematic) {
@@ -279,6 +419,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             needsSeed = false;
             seedFresh();
             return;
+        }
+        if (frontiers.isEmpty() && !roomOrigins.isEmpty() && isReady()) {
+            restartFromDisconnectedSeed();
         }
 
         List<BlockPos> playerPositions = serverLevel.players().stream()
@@ -546,7 +689,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             for (int z = minZ; z < maxZ; z++)
                 for (int y = minGenerationY; y <= maxGenerationY; y++) {
                     mutable.set(x, y, z);
-                    chunk.setBlockState(mutable, Blocks.SMOOTH_SANDSTONE.defaultBlockState(), false);
+                    chunk.setBlockState(mutable, fillSpaceState, false);
                 }
 
         Set<BlockPos> roomSnapshot = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);

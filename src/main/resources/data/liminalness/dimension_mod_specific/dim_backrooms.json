@@ -3,6 +3,7 @@
   "generation_y": 128,
   "min_y": 0,
   "max_y": 512,
+  "fill_space": "minecraft:smooth_sandstone",
   "generation_radius_horizontal": 64,
   "generation_radius_vertical": 16,
   "steps_per_tick": 10,

@@ -22,6 +22,7 @@ public class DimensionConfigLoader {
         int generationY      = json.get("generation_y").getAsInt();
         int minY             = json.get("min_y").getAsInt();
         int maxY             = json.get("max_y").getAsInt();
+        String fillSpace     = json.has("fill_space") ? json.get("fill_space").getAsString() : "minecraft:smooth_sandstone";
         int radiusHorizontal = json.get("generation_radius_horizontal").getAsInt();
         int radiusVertical   = json.get("generation_radius_vertical").getAsInt();
         int stepsPerTick     = json.get("steps_per_tick").getAsInt();
@@ -49,9 +50,7 @@ public class DimensionConfigLoader {
         }
 
         return new DimensionConfig(
-            dimension, generationY, minY, maxY,
-            radiusHorizontal, radiusVertical, stepsPerTick, minRooms,
-            entries
+            dimension, generationY, minY, maxY, fillSpace, radiusHorizontal, radiusVertical, stepsPerTick, minRooms, entries
         );
     }
 }

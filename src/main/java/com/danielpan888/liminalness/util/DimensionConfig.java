@@ -7,6 +7,7 @@ public record DimensionConfig(
     int generationY,
     int minY,
     int maxY,
+    String fillSpace,
     int generationRadiusHorizontal,
     int generationRadiusVertical,
     int stepsPerTick,
