@@ -424,19 +424,18 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public void tick() {
 
-        if (!running || serverLevel == null) return;
+        if (serverLevel == null) return;
+        List<BlockPos> playerPositions = serverLevel.players().stream().map(p -> p.blockPosition()).toList();
+        if (playerPositions.isEmpty()) return;
         if (needsSeed && isReady() && roomOrigins.isEmpty()) {
             needsSeed = false;
             seedFresh();
             return;
         }
+        if (!running) return;
         if (frontiers.isEmpty() && !roomOrigins.isEmpty() && isReady()) {
             restartFromDisconnectedSeed();
         }
-
-        List<BlockPos> playerPositions = serverLevel.players().stream()
-                .map(p -> p.blockPosition()).toList();
-        if (playerPositions.isEmpty()) return;
 
         if (!stalePatchedChunks.isEmpty()) {
             for (var player : serverLevel.players()) {

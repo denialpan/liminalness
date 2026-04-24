@@ -111,9 +111,8 @@ public class DimensionManager {
                         liminalness.LOGGER.info("dimension manager - restored {} and its {} rooms", dimId, generator.roomOrigins.size());
                         generator.resume();
                     } else {
-                        // FIRST time dimension generated and started in the WORLD
-                        liminalness.LOGGER.info("dimension manager - creating {} for the first time", dimId);
-                        generator.seedFresh();
+                        liminalness.LOGGER.info("dimension manager - {} awaiting first player before generation", dimId);
+                        generator.needsSeed = true;
                     }
                 }
             }

@@ -278,6 +278,10 @@ public class liminalness {
                 }
 
                 FrontierChunkGenerator generator = (FrontierChunkGenerator) DimensionManager.getInstance(backrooms.dimension().location());
+                if (generator != null && generator.roomOrigins.isEmpty() && generator.needsSeed && generator.isReady()) {
+                    generator.needsSeed = false;
+                    generator.seedFresh();
+                }
                 Vec3 spawnPos = generator != null ? generator.getStartingSpawnPosition() : new Vec3(0.5, 128.0, 0.5);
 
                 savedPositions.put(player.getUUID(), new OverworldPosition(
