@@ -38,6 +38,11 @@
     {
       "path": "schematics/vertical_test.schem",
       "weight": "2"
+    },
+
+    {
+      "path": "schematics/1x1_test.schem",
+      "weight": "2"
     }
 
   ]

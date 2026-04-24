@@ -525,6 +525,28 @@ public class SchematicLoader {
 
             Direction facing;
 
+            if (spanX == 0 && spanY == 0 && spanZ == 0) {
+                List<Direction> possibleFacings = new ArrayList<>();
+
+                if (minY == schMinY) possibleFacings.add(Direction.DOWN);
+                if (minY == schMaxY) possibleFacings.add(Direction.UP);
+                if (minX == schMinX) possibleFacings.add(Direction.WEST);
+                if (minX == schMaxX) possibleFacings.add(Direction.EAST);
+                if (minZ == schMinZ) possibleFacings.add(Direction.NORTH);
+                if (minZ == schMaxZ) possibleFacings.add(Direction.SOUTH);
+
+                if (possibleFacings.size() != 1) {
+                    liminalness.LOGGER.warn("schematic loader - ambiguous 1x1 marker plane at {} possibleFacings={}, skipping", plane.iterator().next(), possibleFacings);
+                    continue;
+                }
+
+                facing = possibleFacings.getFirst();
+                BlockPos corner = new BlockPos(minX, minY, minZ);
+                result.add(new ConnectionPoint(corner, facing, 1, 1, markerBlock));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w=1 h=1 markertype={}", corner, facing, markerBlock);
+                continue;
+            }
+
             // marker plane flat on y axis (up or down)
             if (spanY == 0 && spanX > 0 && spanZ > 0) {
 
