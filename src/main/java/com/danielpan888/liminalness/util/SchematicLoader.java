@@ -78,10 +78,22 @@ public class SchematicLoader {
     ) {}
 
     public static final Set<Block> MARKER_BLOCKS = Set.of(
-        Blocks.LIME_WOOL,
-        Blocks.CYAN_WOOL,
-        Blocks.LIGHT_BLUE_WOOL,
-        Blocks.PURPLE_WOOL
+        Blocks.WHITE_STAINED_GLASS,
+        Blocks.LIGHT_GRAY_STAINED_GLASS,
+        Blocks.GRAY_STAINED_GLASS,
+        Blocks.BLACK_STAINED_GLASS,
+        Blocks.BROWN_STAINED_GLASS,
+        Blocks.RED_STAINED_GLASS,
+        Blocks.ORANGE_STAINED_GLASS,
+        Blocks.YELLOW_STAINED_GLASS,
+        Blocks.LIME_STAINED_GLASS,
+        Blocks.GREEN_STAINED_GLASS,
+        Blocks.CYAN_STAINED_GLASS,
+        Blocks.LIGHT_BLUE_STAINED_GLASS,
+        Blocks.BLUE_STAINED_GLASS,
+        Blocks.PURPLE_STAINED_GLASS,
+        Blocks.MAGENTA_STAINED_GLASS,
+        Blocks.PINK_STAINED_GLASS
     );
 
     public static List<Map.Entry<String, Schematic>> createHorizontalVariants(String basePath, Schematic base) {
