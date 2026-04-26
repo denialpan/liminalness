@@ -78,7 +78,6 @@ public class SchematicLoader {
     ) {}
 
     public static final Set<Block> MARKER_BLOCKS = Set.of(
-        Blocks.WHITE_STAINED_GLASS,
         Blocks.LIGHT_GRAY_STAINED_GLASS,
         Blocks.GRAY_STAINED_GLASS,
         Blocks.BLACK_STAINED_GLASS,
@@ -122,9 +121,22 @@ public class SchematicLoader {
             if (arr.length == 3) offset = arr;
         }
 
-        CompoundTag blocksTag  = nbt.getCompound("Blocks");
-        CompoundTag paletteTag = blocksTag.getCompound("Palette");
-        byte[] blockData  = blocksTag.getByteArray("Data");
+        CompoundTag blocksTag = nbt.contains("Blocks", Tag.TAG_COMPOUND) ? nbt.getCompound("Blocks") : null;
+        CompoundTag paletteTag;
+        byte[] blockData;
+
+        // support worldedit amd axiom schematics formats, since for some reason theyre different
+        // worldedit schem export
+        if (blocksTag != null && blocksTag.contains("Palette", Tag.TAG_COMPOUND) && blocksTag.contains("Data", Tag.TAG_BYTE_ARRAY)) {
+            paletteTag = blocksTag.getCompound("Palette");
+            blockData = blocksTag.getByteArray("Data");
+        // axiom
+        } else if (nbt.contains("Palette", Tag.TAG_COMPOUND) && nbt.contains("BlockData", Tag.TAG_BYTE_ARRAY)) {
+            paletteTag = nbt.getCompound("Palette");
+            blockData = nbt.getByteArray("BlockData");
+        } else {
+            throw new IllegalArgumentException("unsupported schematic format: where did you export this from?");
+        }
 
         // block palette
         BlockState[] palette = new BlockState[paletteTag.size()];
@@ -180,7 +192,8 @@ public class SchematicLoader {
 
         // parse chest contents
         Map<BlockPos, CompoundTag> blockEntityData = new HashMap<>();
-        if (blocksTag.contains("BlockEntities")) {
+        if (blocksTag != null && blocksTag.contains("BlockEntities")) {
+
             ListTag beList = blocksTag.getList("BlockEntities", Tag.TAG_COMPOUND);
             for (int i = 0; i < beList.size(); i++) {
                 CompoundTag be = beList.getCompound(i);
@@ -190,9 +203,29 @@ public class SchematicLoader {
 
                 // normalize chest
                 BlockPos rawPos = new BlockPos(
-                        pos[0] + offset[0],
-                        pos[1] + offset[1],
-                        pos[2] + offset[2]
+                    pos[0] + offset[0],
+                    pos[1] + offset[1],
+                    pos[2] + offset[2]
+                );
+                BlockPos normalizedPos = normalize(rawPos, minX, minY, minZ);
+                CompoundTag data = be.getCompound("Data").copy();
+                blockEntityData.put(normalizedPos, data);
+                liminalness.LOGGER.info("schematic loader - block entity at normalized={} items={}", normalizedPos, data.contains("Items") ? data.getList("Items", 10).size() : 0);
+            }
+
+        } else if (nbt.contains("BlockEntities", Tag.TAG_LIST)) {
+            ListTag beList = nbt.getList("BlockEntities", Tag.TAG_COMPOUND);
+            for (int i = 0; i < beList.size(); i++) {
+                CompoundTag be = beList.getCompound(i);
+                int[] pos = be.getIntArray("Pos");
+                if (pos.length != 3) continue;
+                if (!be.contains("Data")) continue;
+
+                // same normalize
+                BlockPos rawPos = new BlockPos(
+                    pos[0] + offset[0],
+                    pos[1] + offset[1],
+                    pos[2] + offset[2]
                 );
                 BlockPos normalizedPos = normalize(rawPos, minX, minY, minZ);
                 CompoundTag data = be.getCompound("Data").copy();

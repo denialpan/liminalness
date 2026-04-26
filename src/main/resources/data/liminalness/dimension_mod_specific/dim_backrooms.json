@@ -11,37 +11,12 @@
   "schematics": [
 
     {
-      "path": "schematics/backrooms_level_1_hall_2_1.schem",
-      "weight": "1"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_4_1.schem",
+      "path": "schematics/ddd_backrooms_level_1_2_1.schem",
       "weight": "2"
     },
 
     {
-      "path": "schematics/backrooms_level_1_hall_turn_2_1.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_hall_turn_3_1.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/backrooms_level_1_loot_1.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/vertical_test.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/1x1_test.schem",
+      "path": "schematics/ddd_backrooms_level_1_3_1.schem",
       "weight": "2"
     }
 
