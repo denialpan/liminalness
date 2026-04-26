@@ -11,7 +11,9 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class DimensionConfigLoader {
@@ -42,15 +44,24 @@ public class DimensionConfigLoader {
         int radiusVertical   = json.get("generation_radius_vertical").getAsInt();
         int stepsPerTick     = json.get("steps_per_tick").getAsInt();
         int minRooms         = json.has("min_rooms") ? json.get("min_rooms").getAsInt() : 100;
+        int defaultWeight    = json.has("default_weight") ? json.get("default_weight").getAsInt() : 1;
+        String defaultSchematicsDir = json.has("default_schematics_dir") ? json.get("default_schematics_dir").getAsString() : "schematics";
 
-        JsonArray schematicsJson = json.getAsJsonArray("schematics");
-        List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
+        JsonArray schematicsJson = json.has("schematics") ? json.getAsJsonArray("schematics") : new JsonArray();
+        Map<String, Integer> schematicWeights = discoverSchematics(defaultSchematicsDir, defaultNamespace, resourceManager, defaultWeight);
 
         for (var elem : schematicsJson) {
             JsonObject obj = elem.getAsJsonObject();
-            String path = obj.get("path").getAsString();
-            int weight = obj.get("weight").getAsInt();
+            String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), defaultSchematicsDir);
+            int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
+            schematicWeights.put(path, weight);
+        }
 
+        List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
+
+        for (var entry : schematicWeights.entrySet()) {
+            String path = entry.getKey();
+            int weight = entry.getValue();
             try (InputStream schematicStream = openSchematic(path, defaultNamespace, resourceManager)) {
                 if (schematicStream == null) {
                     liminalness.LOGGER.error("dimension config - schematic not found: {} referenced by {}", path, sourceName);
@@ -60,6 +71,8 @@ public class DimensionConfigLoader {
                 SchematicLoader.Schematic schematic = SchematicLoader.load(schematicStream);
                 entries.add(new DimensionConfig.SchematicEntry(path, weight, schematic));
                 liminalness.LOGGER.info("dimension config - loaded schematic: {} weight={}", path, weight);
+            } catch (Exception e) {
+                liminalness.LOGGER.error("dimension config - failed to load schematic: {} referenced by {}: {}", path, sourceName, e.toString());
             }
         }
 
@@ -87,5 +100,30 @@ public class DimensionConfigLoader {
                 throw new RuntimeException(e);
             }
         }).orElse(null);
+    }
+
+    private static String resolveSchematicPath(String value, String defaultSchematicsDir) {
+        String prefix = defaultSchematicsDir.endsWith("/") ? defaultSchematicsDir : defaultSchematicsDir + "/";
+        return prefix + value;
+    }
+
+    private static Map<String, Integer> discoverSchematics(String defaultSchematicsDir, String defaultNamespace, ResourceManager resourceManager, int defaultWeight) {
+        Map<String, Integer> discovered = new LinkedHashMap<>();
+        if (resourceManager == null) {
+            return discovered;
+        }
+
+        String prefix = defaultSchematicsDir.endsWith("/") ? defaultSchematicsDir : defaultSchematicsDir + "/";
+        Map<ResourceLocation, Resource> resources = resourceManager.listResources(
+            defaultSchematicsDir,
+            id -> id.getNamespace().equals(defaultNamespace) && id.getPath().endsWith(".schem")
+        );
+
+        resources.keySet().stream()
+            .map(ResourceLocation::getPath)
+            .sorted()
+            .forEach(path -> discovered.put(path.startsWith(prefix) ? path : prefix + path, defaultWeight));
+
+        return discovered;
     }
 }

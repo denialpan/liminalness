@@ -8,17 +8,10 @@
   "generation_radius_vertical": 16,
   "steps_per_tick": 10,
   "min_rooms": 100,
+
+  "default_weight": 2,
+  "default_schematics_dir": "schematics",
   "schematics": [
-
-    {
-      "path": "schematics/ddd_backrooms_level_1_2_1.schem",
-      "weight": "2"
-    },
-
-    {
-      "path": "schematics/ddd_backrooms_level_1_3_1.schem",
-      "weight": "2"
-    }
 
   ]
 }
