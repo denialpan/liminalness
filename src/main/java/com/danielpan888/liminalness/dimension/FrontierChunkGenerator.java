@@ -62,6 +62,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public final Set<BlockPos> persistedRooms = ConcurrentHashMap.newKeySet();
     public final Set<Long> stalePatchedChunks = ConcurrentHashMap.newKeySet();
+    private final ArrayDeque<Long> staleChunkQueue = new ArrayDeque<>();
+    private final Set<Long> queuedStaleChunks = ConcurrentHashMap.newKeySet();
 
     private final Map<SchematicLoader.Schematic, String> schematicPaths = new HashMap<>();
     private final Map<String, SchematicLoader.Schematic> pathToSchematic = new HashMap<>();
@@ -128,6 +130,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.spawnPool.clear();
         this.spatialIndex.clear();
         this.startingRoomOrigin = null;
+        this.staleChunkQueue.clear();
+        this.queuedStaleChunks.clear();
 
         candidateIndex.clear();
         candidateCumulativeWeights.clear();
@@ -228,6 +232,18 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public void clearFrontier() {
         this.frontiers.clear();
+    }
+
+    public void resetStaleChunkTracking() {
+        stalePatchedChunks.clear();
+        staleChunkQueue.clear();
+        queuedStaleChunks.clear();
+    }
+
+    public void markChunkStale(long chunkKey) {
+        if (stalePatchedChunks.add(chunkKey) && queuedStaleChunks.add(chunkKey)) {
+            staleChunkQueue.addLast(chunkKey);
+        }
     }
 
     public void seedFresh() {
@@ -438,49 +454,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         if (!stalePatchedChunks.isEmpty()) {
-            for (var player : serverLevel.players()) {
-                int playerChunkX = player.blockPosition().getX() >> 4;
-                int playerChunkZ = player.blockPosition().getZ() >> 4;
-                int watchRadius = serverLevel.getServer().getPlayerList().getViewDistance();
-
-                for (int cx = playerChunkX - watchRadius; cx <= playerChunkX + watchRadius; cx++) {
-                    for (int cz = playerChunkZ - watchRadius; cz <= playerChunkZ + watchRadius; cz++) {
-                        long ck = chunkKey(cx, cz);
-                        if (!stalePatchedChunks.remove(ck)) continue;
-                        if (committedChunks.contains(ck)) continue;
-
-                        int minX = cx << 4, maxX = minX + 16;
-                        int minZ = cz << 4, maxZ = minZ + 16;
-
-                        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
-                        boolean allResolved = true;
-
-                        for (BlockPos origin : nearbyRooms) {
-                            SchematicLoader.Schematic schematic = roomOrigins.get(origin);
-                            if (schematic == null) { allResolved = false; continue; }
-
-                            for (var block : schematic.finalBlocks().entrySet()) {
-                                BlockPos local = block.getKey();
-                                BlockPos world = origin.offset(block.getKey());
-                                if (world.getX() < minX || world.getX() >= maxX) continue;
-                                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-                                if (!serverLevel.isLoaded(world)) { allResolved = false; continue; }
-                                serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
-                                if (schematic.chestPositions().contains(local)) {
-                                    scheduleChestFill(world.immutable(), 0);
-                                }
-                            }
-                        }
-
-                        if (allResolved) {
-                            committedChunks.add(ck);
-                            pendingChunks.remove(ck);
-                        } else {
-                            stalePatchedChunks.add(ck);
-                        }
-                    }
-                }
-            }
+            processStaleChunks(playerPositions);
         }
 
         // expand frontier processing
@@ -506,6 +480,89 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         if (deferred != null) frontiers.addAll(deferred);
+    }
+
+    private void processStaleChunks(List<BlockPos> playerPositions) {
+        int budget = Math.max(stepsPerTick * 2, 16);
+        int attempts = 0;
+
+        while (attempts < budget && !staleChunkQueue.isEmpty()) {
+            long ck = staleChunkQueue.pollFirst();
+            queuedStaleChunks.remove(ck);
+            attempts++;
+
+            if (!stalePatchedChunks.contains(ck) || committedChunks.contains(ck)) {
+                stalePatchedChunks.remove(ck);
+                continue;
+            }
+
+            int chunkX = (int) (ck >> 32);
+            int chunkZ = (int) ck;
+            if (!isChunkNearAnyPlayer(chunkX, chunkZ, playerPositions)) {
+                requeueStaleChunk(ck);
+                continue;
+            }
+
+            if (patchChunk(chunkX, chunkZ)) {
+                stalePatchedChunks.remove(ck);
+                committedChunks.add(ck);
+                pendingChunks.remove(ck);
+            } else {
+                requeueStaleChunk(ck);
+            }
+        }
+    }
+
+    private boolean patchChunk(int chunkX, int chunkZ) {
+        int minX = chunkX << 4, maxX = minX + 16;
+        int minZ = chunkZ << 4, maxZ = minZ + 16;
+
+        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
+        boolean allResolved = true;
+
+        for (BlockPos origin : nearbyRooms) {
+            SchematicLoader.Schematic schematic = roomOrigins.get(origin);
+            if (schematic == null) {
+                allResolved = false;
+                continue;
+            }
+
+            for (var block : schematic.finalBlocks().entrySet()) {
+                BlockPos local = block.getKey();
+                BlockPos world = origin.offset(local);
+                if (world.getX() < minX || world.getX() >= maxX) continue;
+                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+                if (!serverLevel.isLoaded(world)) {
+                    allResolved = false;
+                    continue;
+                }
+                serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
+                if (schematic.chestPositions().contains(local)) {
+                    scheduleChestFill(world.immutable(), 0);
+                }
+            }
+        }
+
+        return allResolved;
+    }
+
+    private boolean isChunkNearAnyPlayer(int chunkX, int chunkZ, List<BlockPos> playerPositions) {
+        int watchRadius = serverLevel.getServer().getPlayerList().getViewDistance();
+        for (BlockPos playerPos : playerPositions) {
+            int playerChunkX = playerPos.getX() >> 4;
+            int playerChunkZ = playerPos.getZ() >> 4;
+            if (Math.abs(chunkX - playerChunkX) <= watchRadius &&
+                    Math.abs(chunkZ - playerChunkZ) <= watchRadius) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void requeueStaleChunk(long chunkKey) {
+        if (stalePatchedChunks.contains(chunkKey) && queuedStaleChunks.add(chunkKey)) {
+            staleChunkQueue.addLast(chunkKey);
+        }
     }
 
     private boolean isInRange(BlockPos pos, List<BlockPos> players) {
@@ -637,7 +694,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
                 long ck = chunkKey(cx, cz);
                 committedChunks.remove(ck);
-                stalePatchedChunks.add(ck);
+                markChunkStale(ck);
             }
         }
 
@@ -655,7 +712,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         for (BlockPos local : schematic.chestPositions()) {
             BlockPos world = origin.offset(local).immutable();
             if (serverLevel.isLoaded(world)) continue;
-            stalePatchedChunks.add(chunkKey(world.getX() >> 4, world.getZ() >> 4));
+            markChunkStale(chunkKey(world.getX() >> 4, world.getZ() >> 4));
         }
     }
 

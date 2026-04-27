@@ -83,6 +83,7 @@ public class FrontierSavedData extends SavedData {
         gen.spatialIndex.clear();
         gen.persistedRooms.clear();
         gen.committedChunks.clear();
+        gen.resetStaleChunkTracking();
 
         for (RoomRecord rr : rooms) {
             SchematicLoader.Schematic schematic = gen.getSchematicByPath(rr.schematicPath());
@@ -100,7 +101,6 @@ public class FrontierSavedData extends SavedData {
         gen.portalPositions.addAll(portalPositions);
         gen.consumedChests.addAll(consumedChests);
 
-        gen.stalePatchedChunks.clear();
         for (BlockPos origin : gen.persistedRooms) {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
             if (schematic == null) continue;
@@ -109,7 +109,7 @@ public class FrontierSavedData extends SavedData {
             int minCZ = origin.getZ() >> 4, maxCZ = (origin.getZ() + extents[2]) >> 4;
             for (int cx = minCX; cx <= maxCX; cx++)
                 for (int cz = minCZ; cz <= maxCZ; cz++)
-                    gen.stalePatchedChunks.add(FrontierChunkGenerator.chunkKey(cx, cz));
+                    gen.markChunkStale(FrontierChunkGenerator.chunkKey(cx, cz));
         }
 
         // Rebuild frontier queues from restored state

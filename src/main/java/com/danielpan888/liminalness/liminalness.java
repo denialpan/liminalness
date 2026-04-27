@@ -142,7 +142,7 @@ public class liminalness {
         if (allResolved) {
             gen.committedChunks.add(key);
         } else {
-            gen.stalePatchedChunks.add(key);
+            gen.markChunkStale(key);
         }
 
     }
