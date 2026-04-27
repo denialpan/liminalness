@@ -199,7 +199,6 @@ public class SchematicLoader {
                 CompoundTag be = beList.getCompound(i);
                 int[] pos = be.getIntArray("Pos");
                 if (pos.length != 3) continue;
-                if (!be.contains("Data")) continue;
 
                 // normalize chest
                 BlockPos rawPos = new BlockPos(
@@ -208,7 +207,7 @@ public class SchematicLoader {
                     pos[2] + offset[2]
                 );
                 BlockPos normalizedPos = normalize(rawPos, minX, minY, minZ);
-                CompoundTag data = be.getCompound("Data").copy();
+                CompoundTag data = extractBlockEntityPayload(be);
                 blockEntityData.put(normalizedPos, data);
                 liminalness.LOGGER.info("schematic loader - block entity at normalized={} items={}", normalizedPos, data.contains("Items") ? data.getList("Items", 10).size() : 0);
             }
@@ -219,7 +218,6 @@ public class SchematicLoader {
                 CompoundTag be = beList.getCompound(i);
                 int[] pos = be.getIntArray("Pos");
                 if (pos.length != 3) continue;
-                if (!be.contains("Data")) continue;
 
                 // same normalize
                 BlockPos rawPos = new BlockPos(
@@ -228,7 +226,7 @@ public class SchematicLoader {
                     pos[2] + offset[2]
                 );
                 BlockPos normalizedPos = normalize(rawPos, minX, minY, minZ);
-                CompoundTag data = be.getCompound("Data").copy();
+                CompoundTag data = extractBlockEntityPayload(be);
                 blockEntityData.put(normalizedPos, data);
                 liminalness.LOGGER.info("schematic loader - block entity at normalized={} items={}", normalizedPos, data.contains("Items") ? data.getList("Items", 10).size() : 0);
             }
@@ -293,6 +291,16 @@ public class SchematicLoader {
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {
         return new BlockPos(p.getX() - minX, p.getY() - minY, p.getZ() - minZ);
+    }
+
+    private static CompoundTag extractBlockEntityPayload(CompoundTag blockEntityTag) {
+        if (blockEntityTag.contains("Data", Tag.TAG_COMPOUND)) {
+            return blockEntityTag.getCompound("Data").copy();
+        }
+
+        CompoundTag payload = blockEntityTag.copy();
+        payload.remove("Pos");
+        return payload;
     }
 
     private static Schematic transform(Schematic base, SchematicVariant transform) {

@@ -44,6 +44,7 @@ import net.neoforged.neoforge.common.NeoForge;
 import java.util.*;
 
 // TODO: organize schematic marker and portals?
+// TODO: fix reenter dimension fallback 0 128 0
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(liminalness.MODID)
