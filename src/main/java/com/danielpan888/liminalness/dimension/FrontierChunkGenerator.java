@@ -254,27 +254,43 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         List<SchematicLoader.Schematic> pool = spawnPool.isEmpty() ? weightedPool : spawnPool;
         if (pool.isEmpty()) return;
 
-        long hash = worldSeed;
-        hash ^= getDimensionId().toString().hashCode();
-        hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
+        long hash = startingRoomHash();
         SchematicLoader.Schematic startSchema = pool.get(
                 (int) Long.remainderUnsigned(hash, pool.size())
         );
 
-        int[] extents = getExtents(startSchema);
         long positionHash = hash;
         int spawnRange = Math.max(radiusHorizontal, 8192);
 
         positionHash = Long.rotateLeft(positionHash, 17) * 0x94D049BB133111EBL;
-        int startX = randomInRange(positionHash, -spawnRange, spawnRange) - (extents[0] / 2);
+        int startCenterX = randomInRange(positionHash, -spawnRange, spawnRange);
 
         positionHash = Long.rotateLeft(positionHash, 17) * 0x94D049BB133111EBL;
-        int startZ = randomInRange(positionHash, -spawnRange, spawnRange) - (extents[2] / 2);
+        int startCenterZ = randomInRange(positionHash, -spawnRange, spawnRange);
 
+        seedFreshAt(startSchema, startCenterX, startCenterZ);
+    }
+
+    public void seedFreshAt(int startCenterX, int startCenterZ) {
+        if (this.schematics.isEmpty()) return;
+        liminalness.LOGGER.info("seeding new generation for: {}", getDimensionId());
+
+        List<SchematicLoader.Schematic> pool = spawnPool.isEmpty() ? weightedPool : spawnPool;
+        if (pool.isEmpty()) return;
+
+        long hash = startingRoomHash();
+        SchematicLoader.Schematic startSchema = pool.get(
+                (int) Long.remainderUnsigned(hash, pool.size())
+        );
+        seedFreshAt(startSchema, startCenterX, startCenterZ);
+    }
+
+    private void seedFreshAt(SchematicLoader.Schematic startSchema, int startCenterX, int startCenterZ) {
+        int[] extents = getExtents(startSchema);
         BlockPos startPos = new BlockPos(
-            startX,
+            startCenterX - (extents[0] / 2),
             generationY - (extents[1] / 2),
-            startZ
+            startCenterZ - (extents[2] / 2)
         );
 
         startingRoomOrigin = startPos;
@@ -285,6 +301,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         resume();
 
         liminalness.LOGGER.info("{}: seeded with {} at {}", getDimensionId(), getPathBySchematic(startSchema), startPos);
+    }
+
+    private long startingRoomHash() {
+        long hash = worldSeed;
+        hash ^= getDimensionId().toString().hashCode();
+        return Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
     }
 
     private int randomInRange(long hash, int minInclusive, int maxInclusive) {

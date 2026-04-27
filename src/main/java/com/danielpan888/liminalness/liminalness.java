@@ -3,21 +3,19 @@ package com.danielpan888.liminalness;
 import com.danielpan888.liminalness.dimension.DimensionManager;
 import com.danielpan888.liminalness.dimension.FrontierChunkGenerator;
 import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
+import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkDestination;
+import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkHandler;
 import com.danielpan888.liminalness.util.SchematicLoader;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.particles.DustColorTransitionOptions;
 import net.minecraft.core.particles.ParticleOptions;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -228,86 +226,39 @@ public class liminalness {
         BlockPos pos = event.getPos();
         BlockState state = level.getBlockState(pos);
 
-        // is bed and no skylight and bfs has no light anywhere 5 radius
-        if (state.getBlock() instanceof BedBlock) {
-
-            if (level.getBrightness(LightLayer.SKY, pos) > 0) return;
-
-            int radius = 5;
-            boolean canTp = true;
-            Queue<BlockPos> queue = new ArrayDeque<>();
-            Set<BlockPos> visited = new HashSet<>();
-
-            queue.add(pos);
-            visited.add(pos);
-
-            while (!queue.isEmpty()) {
-                BlockPos current = queue.poll();
-
-                BlockState checkState = level.getBlockState(current);
-
-
-                if (!checkState.isAir()) {
-                    if (level.getBrightness(LightLayer.BLOCK, current) > 0) {
-                        canTp = false;
-                        break;
-                    }
-                    continue;
-                }
-
-                for (Direction dir : Direction.values()) {
-                    BlockPos neighbour = current.relative(dir);
-
-                    if (visited.contains(neighbour)) continue;
-
-                    if (Math.abs(neighbour.getX() - pos.getX()) > radius) continue;
-                    if (Math.abs(neighbour.getY() - pos.getY()) > radius) continue;
-                    if (Math.abs(neighbour.getZ() - pos.getZ()) > radius) continue;
-
-                    visited.add(neighbour);
-                    queue.add(neighbour);
-                }
-            }
-
-            // teleport to dimension
-            if (canTp) {
-                ResourceKey<Level> backroomsKey = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse("liminalness:dim_backrooms"));
-
-                ServerLevel backrooms = server.getLevel(backroomsKey);
-                if (backrooms == null) {
-                    return;
-                }
-
-                FrontierChunkGenerator generator = (FrontierChunkGenerator) DimensionManager.getInstance(backrooms.dimension().location());
-                if (generator != null && generator.roomOrigins.isEmpty() && generator.needsSeed && generator.isReady()) {
-                    generator.needsSeed = false;
-                    generator.seedFresh();
-                }
-                Vec3 spawnPos = generator != null ? generator.getStartingSpawnPosition() : new Vec3(0.5, 128.0, 0.5);
-
-                savedPositions.put(player.getUUID(), new OverworldPosition(
-                    player.getX(),
-                    player.getY(),
-                    player.getZ(),
-                    player.getYRot(),
-                    player.getXRot()
-                ));
-
-                player.teleportTo(
-                    backrooms,
-                    spawnPos.x,
-                    spawnPos.y,
-                    spawnPos.z,
-                    player.getYRot(),
-                    player.getXRot()
-                );
-
-                server.execute(() -> {
-                    player.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
-                    player.connection.teleport(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
-                });
-
-            }
+        if (!(state.getBlock() instanceof BedBlock)) {
+            return;
         }
+
+        Optional<BedLinkDestination> destination = BedLinkHandler.resolveDestination(player, pos);
+        if (destination.isEmpty()) {
+            return;
+        }
+
+        BedLinkDestination link = destination.get();
+        Vec3 spawnPos = link.spawnPos();
+        ServerLevel targetLevel = link.level();
+
+        savedPositions.put(player.getUUID(), new OverworldPosition(
+            player.getX(),
+            player.getY(),
+            player.getZ(),
+            player.getYRot(),
+            player.getXRot()
+        ));
+
+        player.teleportTo(
+            targetLevel,
+            spawnPos.x,
+            spawnPos.y,
+            spawnPos.z,
+            player.getYRot(),
+            player.getXRot()
+        );
+
+        server.execute(() -> {
+            player.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
+            player.connection.teleport(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
+        });
     }
 }

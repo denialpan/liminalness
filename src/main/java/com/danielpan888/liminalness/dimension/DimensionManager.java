@@ -183,5 +183,8 @@ public class DimensionManager {
         return Collections.unmodifiableMap(instances);
     }
 
+    public static Set<ResourceLocation> getRegisteredIds() {
+        return Collections.unmodifiableSet(registeredIds);
+    }
 
 }
