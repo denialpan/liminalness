@@ -69,7 +69,7 @@ public class ChestLootHandler {
         hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
         Random rand = new Random(hash);
 
-        int itemCount = 3 + rand.nextInt(8);
+        int itemCount = 5 + rand.nextInt(16);
         List<Integer> slots = new ArrayList<>();
         for (int i = 0; i < 27; i++) slots.add(i);
 
@@ -80,14 +80,13 @@ public class ChestLootHandler {
             int slot = slots.remove(slotIndex);
 
             Item item = pool.get(rand.nextInt(pool.size()));
-            int count = 1 + rand.nextInt(Math.min(item.getDefaultMaxStackSize(), 8));
+            int count = 8 + rand.nextInt(Math.min(item.getDefaultMaxStackSize(), 20));
             ItemStack stack = new ItemStack(item, count);
 
             if (!enchantmentPool.isEmpty() && rand.nextFloat() < 0.20f) {
                 int enchantCount = 1 + rand.nextInt(5);
                 for (int e = 0; e < enchantCount; e++) {
-                    Holder<Enchantment> enchantment =
-                            enchantmentPool.get(rand.nextInt(enchantmentPool.size()));
+                    Holder<Enchantment> enchantment = enchantmentPool.get(rand.nextInt(enchantmentPool.size()));
                     int maxLevel = enchantment.value().getMaxLevel();
                     int enchantmentLevel = 1 + rand.nextInt(maxLevel);
                     stack.enchant(enchantment, enchantmentLevel);
