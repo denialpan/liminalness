@@ -5,6 +5,7 @@ import com.danielpan888.liminalness.dimension.FrontierChunkGenerator;
 import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
 import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkDestination;
 import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkHandler;
+import com.danielpan888.liminalness.dimension.portallinkage.PortalLinkHandler;
 import com.danielpan888.liminalness.util.SchematicLoader;
 
 import net.minecraft.core.BlockPos;
@@ -15,7 +16,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -50,13 +50,6 @@ public class liminalness {
 
     public static final String MODID = "liminalness";
     public static final Logger LOGGER = LogUtils.getLogger();
-
-    private record OverworldPosition(
-        double x, double y, double z,
-        float yRot, float xRot
-    ) {}
-
-    private static final Map<UUID, OverworldPosition> savedPositions = new HashMap<>();
 
     public liminalness(IEventBus modEventBus, ModContainer modContainer) {
         modEventBus.addListener(this::commonSetup);
@@ -185,35 +178,28 @@ public class liminalness {
             for (ServerPlayer player : players) {
                 BlockPos feet = player.blockPosition();
                 if (gen.portalPositions.contains(feet)) {
-                    handlePortalTrigger(player, dimId, server);
+                    handlePortalTrigger(player, dimId, feet);
                 }
             }
         }
     }
 
-    private void handlePortalTrigger(ServerPlayer player, ResourceLocation fromDim, MinecraftServer server) {
-
-        // backrooms -> overworld
-
-        // TODO: more dimensions? more schematic themes etc
-        if (fromDim.equals(ResourceLocation.parse("liminalness:dim_backrooms"))) {
-            ServerLevel overworld = server.getLevel(Level.OVERWORLD);
-            if (overworld == null) return;
-
-            OverworldPosition saved = savedPositions.remove(player.getUUID());
-
-            double x = saved != null ? saved.x() : overworld.getSharedSpawnPos().getX() + 0.5;
-            double y = saved != null ? saved.y() : overworld.getSharedSpawnPos().getY();
-            double z = saved != null ? saved.z() : overworld.getSharedSpawnPos().getZ() + 0.5;
-            float yRot = saved != null ? saved.yRot() : player.getYRot();
-            float xRot = saved != null ? saved.xRot() : player.getXRot();
-
-            player.teleportTo(overworld, x, y, z, Set.of(), yRot, xRot);
-
-            final double fx = x, fy = y, fz = z;
-            final float fyRot = yRot, fxRot = xRot;
-            server.execute(() -> player.connection.teleport(fx, fy, fz, fyRot, fxRot));
+    private void handlePortalTrigger(ServerPlayer player, ResourceLocation fromDim, BlockPos portalPos) {
+        Optional<PortalLinkHandler.PortalTeleportTarget> destination =
+                PortalLinkHandler.resolveDestination(player, fromDim, portalPos);
+        if (destination.isEmpty()) {
+            return;
         }
+
+        PortalLinkHandler.PortalTeleportTarget target = destination.get();
+        Vec3 position = target.position();
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return;
+        }
+
+        player.teleportTo(target.level(), position.x, position.y, position.z, target.yRot(), target.xRot());
+        server.execute(() -> player.connection.teleport(position.x, position.y, position.z, target.yRot(), target.xRot()));
     }
 
     // enter dimension
@@ -239,13 +225,7 @@ public class liminalness {
         Vec3 spawnPos = link.spawnPos();
         ServerLevel targetLevel = link.level();
 
-        savedPositions.put(player.getUUID(), new OverworldPosition(
-            player.getX(),
-            player.getY(),
-            player.getZ(),
-            player.getYRot(),
-            player.getXRot()
-        ));
+        PortalLinkHandler.rememberReturnPoint(player, level, pos);
 
         player.teleportTo(
             targetLevel,
