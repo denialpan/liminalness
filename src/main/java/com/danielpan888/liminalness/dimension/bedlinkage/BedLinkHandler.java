@@ -70,7 +70,7 @@ public final class BedLinkHandler {
         }
 
         long locationHash = mixBedHash(worldSeed, sourceDimension, bedPos, targetDimension);
-        int spawnRange = Math.max(generator.radiusHorizontal, 8192);
+        int spawnRange = Math.max(generator.radiusHorizontal, 2560000);
 
         locationHash = Long.rotateLeft(locationHash, 17) * MIX_CONSTANT;
         int startCenterX = randomInRange(locationHash, -spawnRange, spawnRange);

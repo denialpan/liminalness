@@ -260,7 +260,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         );
 
         long positionHash = hash;
-        int spawnRange = Math.max(radiusHorizontal, 8192);
+        int spawnRange = Math.max(radiusHorizontal, 2560000);
 
         positionHash = Long.rotateLeft(positionHash, 17) * 0x94D049BB133111EBL;
         int startCenterX = randomInRange(positionHash, -spawnRange, spawnRange);
