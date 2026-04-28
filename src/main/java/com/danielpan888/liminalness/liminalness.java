@@ -145,48 +145,60 @@ public class liminalness {
             ResourceLocation dimId = entry.getKey();
             FrontierChunkGenerator gen = (FrontierChunkGenerator) entry.getValue();
 
-            if (gen.serverLevel == null || gen.portalPositions.isEmpty()) continue;
+            if (gen.serverLevel == null) continue;
 
             List<ServerPlayer> players = new ArrayList<>(gen.serverLevel.players());
 
-            for (BlockPos portalPos : gen.portalPositions) {
-                for (ServerPlayer player : players) {
-                    if (player.blockPosition().distSqr(portalPos) > 16 * 16) continue;
-
-                    ParticleOptions portalParticle = new DustColorTransitionOptions(
-                        new Vector3f(0.27f, 0.0f, 0.58f), // purple
-                        new Vector3f(0.0f, 0.0f, 0.0f), // black
-                        1.5f
-                    );
-
-                    gen.serverLevel.sendParticles(
-                        portalParticle,
-                        portalPos.getX() + 0.5,
-                        portalPos.getY() + 0.5,
-                        portalPos.getZ() + 0.5,
-                        4,
-                        0.3,
-                        0.3,
-                        0.3,
-                        0.0
-                    );
-
-                }
-            }
+            sendPortalParticles(gen.serverLevel, players, gen.portalPositions, new Vector3f(0.27f, 0.0f, 0.58f));
+            sendPortalParticles(gen.serverLevel, players, gen.structurePortalPositions, new Vector3f(0.45f, 0.24f, 0.10f));
+            sendPortalParticles(gen.serverLevel, players, gen.jigsawPortalPositions, new Vector3f(0.10f, 0.65f, 0.20f));
 
 
             for (ServerPlayer player : players) {
                 BlockPos feet = player.blockPosition();
                 if (gen.portalPositions.contains(feet)) {
-                    handlePortalTrigger(player, dimId, feet);
+                    handlePortalTrigger(player, dimId, feet, false);
+                } else if (gen.structurePortalPositions.contains(feet) || gen.jigsawPortalPositions.contains(feet)) {
+                    handlePortalTrigger(player, dimId, feet, true);
                 }
             }
         }
     }
 
-    private void handlePortalTrigger(ServerPlayer player, ResourceLocation fromDim, BlockPos portalPos) {
-        Optional<PortalLinkHandler.PortalTeleportTarget> destination =
-                PortalLinkHandler.resolveDestination(player, fromDim, portalPos);
+    private void sendPortalParticles(ServerLevel level, List<ServerPlayer> players, Set<BlockPos> portals, Vector3f startColor) {
+        if (portals.isEmpty()) {
+            return;
+        }
+
+        ParticleOptions portalParticle = new DustColorTransitionOptions(
+            startColor,
+            new Vector3f(0.0f, 0.0f, 0.0f),
+            1.5f
+        );
+
+        for (BlockPos portalPos : portals) {
+            for (ServerPlayer player : players) {
+                if (player.blockPosition().distSqr(portalPos) > 16 * 16) continue;
+
+                level.sendParticles(
+                    portalParticle,
+                    portalPos.getX() + 0.5,
+                    portalPos.getY() + 0.5,
+                    portalPos.getZ() + 0.5,
+                    4,
+                    0.3,
+                    0.3,
+                    0.3,
+                    0.0
+                );
+            }
+        }
+    }
+
+    private void handlePortalTrigger(ServerPlayer player, ResourceLocation fromDim, BlockPos portalPos, boolean directReturn) {
+        Optional<PortalLinkHandler.PortalTeleportTarget> destination = directReturn
+                ? PortalLinkHandler.resolveDirectReturn(player)
+                : PortalLinkHandler.resolveDestination(player, fromDim, portalPos);
         if (destination.isEmpty()) {
             return;
         }

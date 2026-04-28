@@ -89,6 +89,16 @@ public final class PortalLinkHandler {
         return Optional.of(resolveTarget(server, player, link, data));
     }
 
+    public static Optional<PortalTeleportTarget> resolveDirectReturn(ServerPlayer player) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return Optional.empty();
+        }
+
+        PortalLinkSavedData data = PortalLinkSavedData.get(server);
+        return Optional.of(resolveReturnTarget(server, player, data));
+    }
+
     private static PortalLink createLink(ServerPlayer player, ResourceLocation fromDimension, BlockPos portalPos) {
 
         MinecraftServer server = player.getServer();
@@ -124,27 +134,7 @@ public final class PortalLinkHandler {
     private static PortalTeleportTarget resolveTarget(MinecraftServer server, ServerPlayer player, PortalLink link, PortalLinkSavedData data) {
 
         if (link.returnOrigin()) {
-            ReturnPoint point = data.removeReturnPoint(player.getUUID());
-
-            if (point != null) {
-                ServerLevel returnLevel = server.getLevel(ResourceKey.create(Registries.DIMENSION, point.dimensionId()));
-                if (returnLevel != null) {
-                    return new PortalTeleportTarget(
-                        returnLevel,
-                        new Vec3(point.x(), point.y(), point.z()),
-                        point.yRot(),
-                        point.xRot()
-                    );
-                }
-            }
-
-            ServerLevel overworld = server.getLevel(Level.OVERWORLD);
-            Vec3 fallback = new Vec3(
-                overworld.getSharedSpawnPos().getX() + 0.5,
-                overworld.getSharedSpawnPos().getY(),
-                overworld.getSharedSpawnPos().getZ() + 0.5
-            );
-            return new PortalTeleportTarget(overworld, fallback, player.getYRot(), player.getXRot());
+            return resolveReturnTarget(server, player, data);
 
         }
 
@@ -165,6 +155,30 @@ public final class PortalLinkHandler {
 
         Vec3 spawnPos = generator.ensureLinkedSpawn(link.targetCenterX(), link.targetCenterZ());
         return new PortalTeleportTarget(targetLevel, spawnPos, player.getYRot(), player.getXRot());
+    }
+
+    private static PortalTeleportTarget resolveReturnTarget(MinecraftServer server, ServerPlayer player, PortalLinkSavedData data) {
+        ReturnPoint point = data.removeReturnPoint(player.getUUID());
+
+        if (point != null) {
+            ServerLevel returnLevel = server.getLevel(ResourceKey.create(Registries.DIMENSION, point.dimensionId()));
+            if (returnLevel != null) {
+                return new PortalTeleportTarget(
+                    returnLevel,
+                    new Vec3(point.x(), point.y(), point.z()),
+                    point.yRot(),
+                    point.xRot()
+                );
+            }
+        }
+
+        ServerLevel overworld = server.getLevel(Level.OVERWORLD);
+        Vec3 fallback = new Vec3(
+            overworld.getSharedSpawnPos().getX() + 0.5,
+            overworld.getSharedSpawnPos().getY(),
+            overworld.getSharedSpawnPos().getZ() + 0.5
+        );
+        return new PortalTeleportTarget(overworld, fallback, player.getYRot(), player.getXRot());
     }
 
     private static FrontierChunkGenerator resolveManagedGenerator(MinecraftServer server, ResourceLocation dimensionId) {
