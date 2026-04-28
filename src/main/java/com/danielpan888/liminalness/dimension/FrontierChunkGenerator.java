@@ -43,6 +43,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public volatile ResourceLocation dimensionId;
 
     public final Set<BlockPos> portalPositions = ConcurrentHashMap.newKeySet();
+    public final Set<BlockPos> jigsawPortalPositions = ConcurrentHashMap.newKeySet();
+    public final Set<BlockPos> structurePortalPositions = ConcurrentHashMap.newKeySet();
     public final Set<BlockPos> chestPositions = ConcurrentHashMap.newKeySet();
 
     public final Set<BlockPos> consumedChests = ConcurrentHashMap.newKeySet();
@@ -130,6 +132,11 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.spawnPool.clear();
         this.spatialIndex.clear();
         this.startingRoomOrigin = null;
+        this.portalPositions.clear();
+        this.jigsawPortalPositions.clear();
+        this.structurePortalPositions.clear();
+        this.chestPositions.clear();
+        this.consumedChests.clear();
         this.staleChunkQueue.clear();
         this.queuedStaleChunks.clear();
 
@@ -925,6 +932,14 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         for (BlockPos local : schematic.portalPositions()) {
             liminalness.LOGGER.debug("frontier generator - register portal at {}", local);
             portalPositions.add(origin.offset(local));
+        }
+        for (BlockPos local : schematic.jigsawPortalPositions()) {
+            liminalness.LOGGER.debug("frontier generator - register jigsaw portal at {}", local);
+            jigsawPortalPositions.add(origin.offset(local));
+        }
+        for (BlockPos local : schematic.structurePortalPositions()) {
+            liminalness.LOGGER.debug("frontier generator - register structure portal at {}", local);
+            structurePortalPositions.add(origin.offset(local));
         }
         for (BlockPos local : schematic.chestPositions()) {
             liminalness.LOGGER.debug("frontier generator - register chest at {}", local);
