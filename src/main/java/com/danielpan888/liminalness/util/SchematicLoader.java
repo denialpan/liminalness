@@ -69,6 +69,8 @@ public class SchematicLoader {
         // preresolve final schematic states
         Map<BlockPos, BlockState> finalBlocks,
         Set<BlockPos> portalPositions,
+        Set<BlockPos> jigsawPortalPositions,
+        Set<BlockPos> structurePortalPositions,
         Set<BlockPos> chestPositions,
 
         Map<BlockPos, CompoundTag> blockEntityData,
@@ -188,6 +190,8 @@ public class SchematicLoader {
 
         Map<BlockPos, BlockState> finalBlocks = new HashMap<>();
         Set<BlockPos> portalPositions = new HashSet<>();
+        Set<BlockPos> jigsawPortalPositions = new HashSet<>();
+        Set<BlockPos> structurePortalPositions = new HashSet<>();
         Set<BlockPos> chestPositions  = new HashSet<>();
 
         // parse chest contents
@@ -243,6 +247,12 @@ public class SchematicLoader {
             } else if (state.getBlock() == Blocks.END_PORTAL_FRAME) {
                 portalPositions.add(pos);
                 finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
+            } else if (state.getBlock() == Blocks.JIGSAW) {
+                jigsawPortalPositions.add(pos);
+                finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
+            } else if (state.getBlock() == Blocks.STRUCTURE_BLOCK) {
+                structurePortalPositions.add(pos);
+                finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
             } else if (state.getBlock() == Blocks.ORANGE_WOOL) {
                 chestPositions.add(pos);
                 finalBlocks.put(pos, Blocks.CHEST.defaultBlockState());
@@ -286,7 +296,18 @@ public class SchematicLoader {
             liminalness.LOGGER.info("|---{}", connectionPoint);
         }
 
-        return new Schematic(blocks, connectionPoints, markers, finalBlocks, portalPositions, chestPositions, blockEntityData, connectionPointIndex);
+        return new Schematic(
+            blocks,
+            connectionPoints,
+            markers,
+            finalBlocks,
+            portalPositions,
+            jigsawPortalPositions,
+            structurePortalPositions,
+            chestPositions,
+            blockEntityData,
+            connectionPointIndex
+        );
     }
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {
@@ -325,6 +346,8 @@ public class SchematicLoader {
 
         Set<BlockPos> markers = transformPositions(base.markers(), maxX, maxZ, transform);
         Set<BlockPos> portalPositions = transformPositions(base.portalPositions(), maxX, maxZ, transform);
+        Set<BlockPos> jigsawPortalPositions = transformPositions(base.jigsawPortalPositions(), maxX, maxZ, transform);
+        Set<BlockPos> structurePortalPositions = transformPositions(base.structurePortalPositions(), maxX, maxZ, transform);
         Set<BlockPos> chestPositions = transformPositions(base.chestPositions(), maxX, maxZ, transform);
 
         Map<BlockPos, CompoundTag> blockEntityData = new HashMap<>();
@@ -345,6 +368,8 @@ public class SchematicLoader {
             finalBlocks,
             markers,
             portalPositions,
+            jigsawPortalPositions,
+            structurePortalPositions,
             chestPositions,
             blockEntityData,
             connectionPoints
@@ -461,6 +486,8 @@ public class SchematicLoader {
         Map<BlockPos, BlockState> finalBlocks,
         Set<BlockPos> markers,
         Set<BlockPos> portalPositions,
+        Set<BlockPos> jigsawPortalPositions,
+        Set<BlockPos> structurePortalPositions,
         Set<BlockPos> chestPositions,
         Map<BlockPos, CompoundTag> blockEntityData,
         List<ConnectionPoint> connectionPoints
@@ -470,6 +497,8 @@ public class SchematicLoader {
         all.addAll(finalBlocks.keySet());
         all.addAll(markers);
         all.addAll(portalPositions);
+        all.addAll(jigsawPortalPositions);
+        all.addAll(structurePortalPositions);
         all.addAll(chestPositions);
         all.addAll(blockEntityData.keySet());
         for (ConnectionPoint connectionPoint : connectionPoints) {
@@ -477,7 +506,7 @@ public class SchematicLoader {
         }
 
         if (all.isEmpty()) {
-            return new Schematic(Map.of(), List.of(), Set.of(), Map.of(), Set.of(), Set.of(), Map.of(), Map.of());
+            return new Schematic(Map.of(), List.of(), Set.of(), Map.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of(), Map.of());
         }
 
         int minX = all.stream().mapToInt(BlockPos::getX).min().orElse(0);
@@ -488,6 +517,8 @@ public class SchematicLoader {
         Map<BlockPos, BlockState> normalizedFinalBlocks = shiftMap(finalBlocks, minX, minY, minZ, false);
         Set<BlockPos> normalizedMarkers = shiftSet(markers, minX, minY, minZ);
         Set<BlockPos> normalizedPortalPositions = shiftSet(portalPositions, minX, minY, minZ);
+        Set<BlockPos> normalizedJigsawPortalPositions = shiftSet(jigsawPortalPositions, minX, minY, minZ);
+        Set<BlockPos> normalizedStructurePortalPositions = shiftSet(structurePortalPositions, minX, minY, minZ);
         Set<BlockPos> normalizedChestPositions = shiftSet(chestPositions, minX, minY, minZ);
         Map<BlockPos, CompoundTag> normalizedBlockEntityData = shiftMap(blockEntityData, minX, minY, minZ, true);
 
@@ -514,6 +545,8 @@ public class SchematicLoader {
             normalizedMarkers,
             normalizedFinalBlocks,
             normalizedPortalPositions,
+            normalizedJigsawPortalPositions,
+            normalizedStructurePortalPositions,
             normalizedChestPositions,
             normalizedBlockEntityData,
             connectionPointIndex

@@ -22,6 +22,8 @@ public class FrontierSavedData extends SavedData {
     private final Set<Long> committed = new HashSet<>();
     private record RoomRecord(BlockPos origin, String schematicPath) {}
     private final Set<BlockPos> portalPositions = new HashSet<>();
+    private final Set<BlockPos> jigsawPortalPositions = new HashSet<>();
+    private final Set<BlockPos> structurePortalPositions = new HashSet<>();
     private final Set<BlockPos> consumedChests = new HashSet<>();
 
     private static String dataName(FrontierChunkGenerator gen) {
@@ -62,6 +64,18 @@ public class FrontierSavedData extends SavedData {
             data.portalPositions.add(new BlockPos(p.getInt("x"), p.getInt("y"), p.getInt("z")));
         }
 
+        ListTag jigsawPortalsTag = tag.getList("jigsaw_portal_positions", Tag.TAG_COMPOUND);
+        for (int i = 0; i < jigsawPortalsTag.size(); i++) {
+            CompoundTag p = jigsawPortalsTag.getCompound(i);
+            data.jigsawPortalPositions.add(new BlockPos(p.getInt("x"), p.getInt("y"), p.getInt("z")));
+        }
+
+        ListTag structurePortalsTag = tag.getList("structure_portal_positions", Tag.TAG_COMPOUND);
+        for (int i = 0; i < structurePortalsTag.size(); i++) {
+            CompoundTag p = structurePortalsTag.getCompound(i);
+            data.structurePortalPositions.add(new BlockPos(p.getInt("x"), p.getInt("y"), p.getInt("z")));
+        }
+
         ListTag consumedTag = tag.getList("consumed_chests", Tag.TAG_COMPOUND);
         for (int i = 0; i < consumedTag.size(); i++) {
             CompoundTag c = consumedTag.getCompound(i);
@@ -79,6 +93,8 @@ public class FrontierSavedData extends SavedData {
         gen.roomOrigins.clear();
         gen.claimed.clear();
         gen.portalPositions.clear();
+        gen.jigsawPortalPositions.clear();
+        gen.structurePortalPositions.clear();
         gen.consumedChests.clear();
         gen.spatialIndex.clear();
         gen.persistedRooms.clear();
@@ -99,6 +115,8 @@ public class FrontierSavedData extends SavedData {
         gen.claimed.addAll(claimed);
         gen.committedChunks.addAll(committed);
         gen.portalPositions.addAll(portalPositions);
+        gen.jigsawPortalPositions.addAll(jigsawPortalPositions);
+        gen.structurePortalPositions.addAll(structurePortalPositions);
         gen.consumedChests.addAll(consumedChests);
 
         for (BlockPos origin : gen.persistedRooms) {
@@ -122,6 +140,8 @@ public class FrontierSavedData extends SavedData {
         rooms.clear();
         claimed.clear();
         portalPositions.clear();
+        jigsawPortalPositions.clear();
+        structurePortalPositions.clear();
         consumedChests.clear();
         committed.clear();
 
@@ -134,6 +154,8 @@ public class FrontierSavedData extends SavedData {
 
         claimed.addAll(gen.claimed);
         portalPositions.addAll(gen.portalPositions);
+        jigsawPortalPositions.addAll(gen.jigsawPortalPositions);
+        structurePortalPositions.addAll(gen.structurePortalPositions);
         consumedChests.addAll(gen.consumedChests);
         committed.addAll(gen.committedChunks);
 
@@ -207,6 +229,26 @@ public class FrontierSavedData extends SavedData {
             portalsTag.add(p);
         }
         tag.put("portal_positions", portalsTag);
+
+        ListTag jigsawPortalsTag = new ListTag();
+        for (BlockPos pos : jigsawPortalPositions) {
+            CompoundTag p = new CompoundTag();
+            p.putInt("x", pos.getX());
+            p.putInt("y", pos.getY());
+            p.putInt("z", pos.getZ());
+            jigsawPortalsTag.add(p);
+        }
+        tag.put("jigsaw_portal_positions", jigsawPortalsTag);
+
+        ListTag structurePortalsTag = new ListTag();
+        for (BlockPos pos : structurePortalPositions) {
+            CompoundTag p = new CompoundTag();
+            p.putInt("x", pos.getX());
+            p.putInt("y", pos.getY());
+            p.putInt("z", pos.getZ());
+            structurePortalsTag.add(p);
+        }
+        tag.put("structure_portal_positions", structurePortalsTag);
 
         ListTag consumedTag = new ListTag();
         for (BlockPos pos : consumedChests) {
