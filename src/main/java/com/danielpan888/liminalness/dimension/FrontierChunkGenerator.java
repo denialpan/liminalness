@@ -275,23 +275,49 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         if (this.schematics.isEmpty()) return;
         liminalness.LOGGER.info("seeding new generation for: {}", getDimensionId());
 
-        List<SchematicLoader.Schematic> pool = spawnPool.isEmpty() ? weightedPool : spawnPool;
-        if (pool.isEmpty()) return;
-
-        long hash = startingRoomHash();
-        SchematicLoader.Schematic startSchema = pool.get(
-                (int) Long.remainderUnsigned(hash, pool.size())
-        );
+        SchematicLoader.Schematic startSchema = selectStartingSchematic();
+        if (startSchema == null) return;
         seedFreshAt(startSchema, startCenterX, startCenterZ);
     }
 
+    public Vec3 ensureLinkedSpawn(int startCenterX, int startCenterZ) {
+        SchematicLoader.Schematic startSchema = selectStartingSchematic();
+        if (startSchema == null) {
+            return new Vec3(0.5, generationY, 0.5);
+        }
+
+        BlockPos existingOrigin = findRoomContaining(startCenterX, startCenterZ);
+        if (existingOrigin != null) {
+            SchematicLoader.Schematic existing = roomOrigins.get(existingOrigin);
+            if (existing != null) {
+                return getSpawnPositionForRoom(existingOrigin, existing);
+            }
+        }
+
+        BlockPos desiredOrigin = originForCenter(startSchema, startCenterX, startCenterZ);
+        SchematicLoader.Schematic exactExisting = roomOrigins.get(desiredOrigin);
+        if (exactExisting != null) {
+            return getSpawnPositionForRoom(desiredOrigin, exactExisting);
+        }
+
+        if (!overlapsAny(startSchema, desiredOrigin)) {
+            placeDisconnectedSeed(desiredOrigin, startSchema);
+            return getSpawnPositionForRoom(desiredOrigin, startSchema);
+        }
+
+        BlockPos overlappingOrigin = findOverlappingRoom(startSchema, desiredOrigin);
+        if (overlappingOrigin != null) {
+            SchematicLoader.Schematic overlapping = roomOrigins.get(overlappingOrigin);
+            if (overlapping != null) {
+                return getSpawnPositionForRoom(overlappingOrigin, overlapping);
+            }
+        }
+
+        return getStartingSpawnPosition();
+    }
+
     private void seedFreshAt(SchematicLoader.Schematic startSchema, int startCenterX, int startCenterZ) {
-        int[] extents = getExtents(startSchema);
-        BlockPos startPos = new BlockPos(
-            startCenterX - (extents[0] / 2),
-            generationY - (extents[1] / 2),
-            startCenterZ - (extents[2] / 2)
-        );
+        BlockPos startPos = originForCenter(startSchema, startCenterX, startCenterZ);
 
         startingRoomOrigin = startPos;
         roomOrigins.put(startPos, startSchema);
@@ -303,10 +329,100 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         liminalness.LOGGER.info("{}: seeded with {} at {}", getDimensionId(), getPathBySchematic(startSchema), startPos);
     }
 
+    private void placeDisconnectedSeed(BlockPos origin, SchematicLoader.Schematic schematic) {
+        roomOrigins.put(origin, schematic);
+        spatialIndex.add(origin, getExtents(schematic));
+        writeToWorld(origin, schematic);
+        registerBlockMarkers(origin, schematic);
+        seedFrontier(origin, schematic);
+
+        final BlockPos finalOrigin = origin;
+        final SchematicLoader.Schematic finalSchematic = schematic;
+        serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalSchematic));
+        resume();
+    }
+
     private long startingRoomHash() {
         long hash = worldSeed;
         hash ^= getDimensionId().toString().hashCode();
         return Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
+    }
+
+    private SchematicLoader.Schematic selectStartingSchematic() {
+        List<SchematicLoader.Schematic> pool = spawnPool.isEmpty() ? weightedPool : spawnPool;
+        if (pool.isEmpty()) {
+            return null;
+        }
+
+        long hash = startingRoomHash();
+        return pool.get((int) Long.remainderUnsigned(hash, pool.size()));
+    }
+
+    private BlockPos originForCenter(SchematicLoader.Schematic schematic, int centerX, int centerZ) {
+        int[] extents = getExtents(schematic);
+        return new BlockPos(
+            centerX - (extents[0] / 2),
+            generationY - (extents[1] / 2),
+            centerZ - (extents[2] / 2)
+        );
+    }
+
+    private Vec3 getSpawnPositionForRoom(BlockPos origin, SchematicLoader.Schematic schematic) {
+        int[] extents = getExtents(schematic);
+        return new Vec3(
+            origin.getX() + (extents[0] / 2.0) + 0.5,
+            generationY,
+            origin.getZ() + (extents[2] / 2.0) + 0.5
+        );
+    }
+
+    private BlockPos findRoomContaining(int centerX, int centerZ) {
+        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(centerX, centerX + 1, centerZ, centerZ + 1);
+        for (BlockPos origin : nearbyRooms) {
+            SchematicLoader.Schematic schematic = roomOrigins.get(origin);
+            if (schematic == null) {
+                continue;
+            }
+            int[] extents = getExtents(schematic);
+            if (centerX < origin.getX() || centerX > origin.getX() + extents[0]) {
+                continue;
+            }
+            if (centerZ < origin.getZ() || centerZ > origin.getZ() + extents[2]) {
+                continue;
+            }
+            return origin;
+        }
+        return null;
+    }
+
+    private BlockPos findOverlappingRoom(SchematicLoader.Schematic candidate, BlockPos origin) {
+        int[] candidateExtents = getExtents(candidate);
+        int minX = origin.getX();
+        int maxX = origin.getX() + candidateExtents[0];
+        int minZ = origin.getZ();
+        int maxZ = origin.getZ() + candidateExtents[2];
+
+        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX + 1, minZ, maxZ + 1);
+        for (BlockPos existingOrigin : nearbyRooms) {
+            SchematicLoader.Schematic existing = roomOrigins.get(existingOrigin);
+            if (existing == null) {
+                continue;
+            }
+            int[] existingExtents = getExtents(existing);
+            if (boxesOverlap(origin, candidateExtents, existingOrigin, existingExtents)) {
+                return existingOrigin;
+            }
+        }
+        return null;
+    }
+
+    private boolean boxesOverlap(BlockPos aOrigin, int[] aExtents, BlockPos bOrigin, int[] bExtents) {
+        return aOrigin.getX() <= bOrigin.getX() + bExtents[0]
+                && aOrigin.getX() + aExtents[0] >= bOrigin.getX()
+                && aOrigin.getY() <= bOrigin.getY() + bExtents[1]
+                && aOrigin.getY() + aExtents[1] >= bOrigin.getY()
+                && aOrigin.getZ() <= bOrigin.getZ() + bExtents[2]
+                && aOrigin.getZ() + aExtents[2] >= bOrigin.getZ();
     }
 
     private int randomInRange(long hash, int minInclusive, int maxInclusive) {
@@ -426,12 +542,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             return new Vec3(origin.getX() + 0.5, generationY, origin.getZ() + 0.5);
         }
 
-        int[] extents = getExtents(schematic);
-        return new Vec3(
-            origin.getX() + (extents[0] / 2.0) + 0.5,
-            generationY,
-            origin.getZ() + (extents[2] / 2.0) + 0.5
-        );
+        return getSpawnPositionForRoom(origin, schematic);
     }
 
     public void seedFrontier(BlockPos origin, SchematicLoader.Schematic schematic) {

@@ -69,21 +69,21 @@ public final class BedLinkHandler {
             return Optional.empty();
         }
 
+        long locationHash = mixBedHash(worldSeed, sourceDimension, bedPos, targetDimension);
+        int spawnRange = Math.max(generator.radiusHorizontal, 8192);
+
+        locationHash = Long.rotateLeft(locationHash, 17) * MIX_CONSTANT;
+        int startCenterX = randomInRange(locationHash, -spawnRange, spawnRange);
+
+        locationHash = Long.rotateLeft(locationHash, 17) * MIX_CONSTANT;
+        int startCenterZ = randomInRange(locationHash, -spawnRange, spawnRange);
+
         if (generator.roomOrigins.isEmpty() && generator.needsSeed) {
-            long locationHash = mixBedHash(worldSeed, sourceDimension, bedPos, targetDimension);
-            int spawnRange = Math.max(generator.radiusHorizontal, 8192);
-
-            locationHash = Long.rotateLeft(locationHash, 17) * MIX_CONSTANT;
-            int startCenterX = randomInRange(locationHash, -spawnRange, spawnRange);
-
-            locationHash = Long.rotateLeft(locationHash, 17) * MIX_CONSTANT;
-            int startCenterZ = randomInRange(locationHash, -spawnRange, spawnRange);
-
             generator.needsSeed = false;
             generator.seedFreshAt(startCenterX, startCenterZ);
         }
 
-        Vec3 spawnPos = generator.getStartingSpawnPosition();
+        Vec3 spawnPos = generator.ensureLinkedSpawn(startCenterX, startCenterZ);
 
         return Optional.of(new BedLinkDestination(targetLevel, spawnPos));
     }
