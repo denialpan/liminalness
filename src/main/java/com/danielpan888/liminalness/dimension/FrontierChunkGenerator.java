@@ -994,9 +994,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public int[] getExtents(SchematicLoader.Schematic s) {
         return extentsCache.computeIfAbsent(s, sch -> new int[]{
-            sch.blocks().keySet().stream().mapToInt(BlockPos::getX).max().orElse(0),
-            sch.blocks().keySet().stream().mapToInt(BlockPos::getY).max().orElse(0),
-            sch.blocks().keySet().stream().mapToInt(BlockPos::getZ).max().orElse(0)
+            sch.extentX(),
+            sch.extentY(),
+            sch.extentZ()
         });
     }
 

@@ -65,6 +65,9 @@ public class SchematicLoader {
         Map<BlockPos, BlockState> blocks,
         List<ConnectionPoint> connectionPoints,
         Set<BlockPos> markers,
+        int extentX,
+        int extentY,
+        int extentZ,
 
         // preresolve final schematic states
         Map<BlockPos, BlockState> finalBlocks,
@@ -115,6 +118,7 @@ public class SchematicLoader {
         if (nbt.contains("Schematic")) nbt = nbt.getCompound("Schematic");
 
         int width = nbt.getShort("Width");
+        int height = nbt.getShort("Height");
         int length = nbt.getShort("Length");
 
         int[] offset = {0, 0, 0};
@@ -300,6 +304,9 @@ public class SchematicLoader {
             blocks,
             connectionPoints,
             markers,
+            Math.max(0, width - 1),
+            Math.max(0, height - 1),
+            Math.max(0, length - 1),
             finalBlocks,
             portalPositions,
             jigsawPortalPositions,
@@ -327,6 +334,9 @@ public class SchematicLoader {
     private static Schematic transform(Schematic base, SchematicVariant transform) {
         int maxX = getMaxCoordinate(base.finalBlocks().keySet(), BlockPos::getX);
         int maxZ = getMaxCoordinate(base.finalBlocks().keySet(), BlockPos::getZ);
+        int rotatedExtentX = transform.rotation() == Rotation.CLOCKWISE_90 || transform.rotation() == Rotation.COUNTERCLOCKWISE_90 ? base.extentZ() : base.extentX();
+        int rotatedExtentY = base.extentY();
+        int rotatedExtentZ = transform.rotation() == Rotation.CLOCKWISE_90 || transform.rotation() == Rotation.COUNTERCLOCKWISE_90 ? base.extentX() : base.extentZ();
 
         Map<BlockPos, BlockState> blocks = new HashMap<>();
         for (var entry : base.blocks().entrySet()) {
@@ -367,6 +377,9 @@ public class SchematicLoader {
             blocks,
             finalBlocks,
             markers,
+            rotatedExtentX,
+            rotatedExtentY,
+            rotatedExtentZ,
             portalPositions,
             jigsawPortalPositions,
             structurePortalPositions,
@@ -485,6 +498,9 @@ public class SchematicLoader {
         Map<BlockPos, BlockState> blocks,
         Map<BlockPos, BlockState> finalBlocks,
         Set<BlockPos> markers,
+        int extentX,
+        int extentY,
+        int extentZ,
         Set<BlockPos> portalPositions,
         Set<BlockPos> jigsawPortalPositions,
         Set<BlockPos> structurePortalPositions,
@@ -506,7 +522,7 @@ public class SchematicLoader {
         }
 
         if (all.isEmpty()) {
-            return new Schematic(Map.of(), List.of(), Set.of(), Map.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of(), Map.of());
+            return new Schematic(Map.of(), List.of(), Set.of(), extentX, extentY, extentZ, Map.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of(), Map.of());
         }
 
         int minX = all.stream().mapToInt(BlockPos::getX).min().orElse(0);
@@ -543,6 +559,9 @@ public class SchematicLoader {
             normalizedBlocks,
             normalizedConnectionPoints,
             normalizedMarkers,
+            extentX,
+            extentY,
+            extentZ,
             normalizedFinalBlocks,
             normalizedPortalPositions,
             normalizedJigsawPortalPositions,
