@@ -15,7 +15,6 @@ import net.minecraft.world.level.block.state.properties.Property;
 
 import java.io.InputStream;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static com.danielpan888.liminalness.dimension.FrontierChunkGenerator.connectionSignature;
 
@@ -54,10 +53,10 @@ public class SchematicLoader {
         }
     }
 
-    public record ConnectionPoint(BlockPos corner, Direction facing, int width, int height, Block markerBlock) {
+    public record ConnectionPoint(BlockPos corner, Direction facing, int width, int height, long patternHash, int[] pattern) {
         @Override
         public String toString() {
-            return String.format("connection point {corner=%s, facing=%s, w=%d, h=%d}", corner, facing, width, height);
+            return String.format("connection point {corner=%s, facing=%s, w=%d, h=%d, pattern=%d}", corner, facing, width, height, patternHash);
         }
     }
 
@@ -291,7 +290,7 @@ public class SchematicLoader {
 
         Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex = new HashMap<>();
         for (ConnectionPoint connectionPoint : connectionPoints) {
-            long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.markerBlock());
+            long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash());
             connectionPointIndex.computeIfAbsent(sig, k -> new ArrayList<>()).add(connectionPoint);
         }
 
@@ -436,8 +435,11 @@ public class SchematicLoader {
 
     private static ConnectionPoint transformConnectionPoint(ConnectionPoint connectionPoint, int maxX, int maxZ, SchematicVariant transform) {
         Set<BlockPos> transformedPlane = new HashSet<>();
-        for (BlockPos pos : getConnectionPlane(connectionPoint)) {
-            transformedPlane.add(transformPos(pos, maxX, maxZ, transform));
+        Map<BlockPos, Block> transformedMarkerTypes = new HashMap<>();
+        for (var entry : getConnectionPlaneMarkerTypes(connectionPoint).entrySet()) {
+            BlockPos transformedPos = transformPos(entry.getKey(), maxX, maxZ, transform);
+            transformedPlane.add(transformedPos);
+            transformedMarkerTypes.put(transformedPos, entry.getValue());
         }
 
         int minX = transformedPlane.stream().mapToInt(BlockPos::getX).min().orElse(0);
@@ -464,7 +466,8 @@ public class SchematicLoader {
             height = maxPlaneY - minY + 1;
         }
 
-        return new ConnectionPoint(corner, facing, width, height, connectionPoint.markerBlock());
+        int[] transformedPattern = buildPatternForFacing(transformedPlane, transformedMarkerTypes, corner, facing, width, height);
+        return new ConnectionPoint(corner, facing, width, height, hashPattern(transformedPattern), transformedPattern);
     }
 
     private static Set<BlockPos> getConnectionPlane(ConnectionPoint connectionPoint) {
@@ -492,6 +495,38 @@ public class SchematicLoader {
         }
 
         return plane;
+    }
+
+    private static Map<BlockPos, Block> getConnectionPlaneMarkerTypes(ConnectionPoint connectionPoint) {
+        Map<BlockPos, Block> plane = new HashMap<>();
+        BlockPos corner = connectionPoint.corner();
+        int[] pattern = connectionPoint.pattern();
+
+        if (connectionPoint.facing() == Direction.UP || connectionPoint.facing() == Direction.DOWN) {
+            for (int dz = 0; dz < connectionPoint.height(); dz++) {
+                for (int dx = 0; dx < connectionPoint.width(); dx++) {
+                    plane.put(corner.offset(dx, 0, dz), markerBlockFromPattern(pattern[dz * connectionPoint.width() + dx]));
+                }
+            }
+        } else if (connectionPoint.facing() == Direction.WEST || connectionPoint.facing() == Direction.EAST) {
+            for (int dy = 0; dy < connectionPoint.height(); dy++) {
+                for (int dz = 0; dz < connectionPoint.width(); dz++) {
+                    plane.put(corner.offset(0, dy, dz), markerBlockFromPattern(pattern[dy * connectionPoint.width() + dz]));
+                }
+            }
+        } else {
+            for (int dy = 0; dy < connectionPoint.height(); dy++) {
+                for (int dx = 0; dx < connectionPoint.width(); dx++) {
+                    plane.put(corner.offset(dx, dy, 0), markerBlockFromPattern(pattern[dy * connectionPoint.width() + dx]));
+                }
+            }
+        }
+
+        return plane;
+    }
+
+    private static Block markerBlockFromPattern(int blockId) {
+        return BuiltInRegistries.BLOCK.byId(blockId);
     }
 
     private static Schematic renormalize(
@@ -545,13 +580,14 @@ public class SchematicLoader {
                 connectionPoint.facing(),
                 connectionPoint.width(),
                 connectionPoint.height(),
-                connectionPoint.markerBlock()
+                connectionPoint.patternHash(),
+                connectionPoint.pattern().clone()
             ));
         }
 
         Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex = new HashMap<>();
         for (ConnectionPoint connectionPoint : normalizedConnectionPoints) {
-            long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.markerBlock());
+            long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash());
             connectionPointIndex.computeIfAbsent(sig, k -> new ArrayList<>()).add(connectionPoint);
         }
 
@@ -608,15 +644,6 @@ public class SchematicLoader {
         int schMaxZ = all.stream().mapToInt(BlockPos::getZ).max().getAsInt();
 
         for (Set<BlockPos> plane : findConnectedComponents(markers)) {
-
-            Set<Block> typesInPlane = plane.stream().map(markerBlockTypes::get).collect(Collectors.toSet());
-            if (typesInPlane.size() > 1) {
-                liminalness.LOGGER.info("schematic loader - mixed types in marker plane, skipping...");
-                continue;
-            }
-
-            Block markerBlock = typesInPlane.iterator().next();
-
             int minX = plane.stream().mapToInt(BlockPos::getX).min().getAsInt();
             int maxX = plane.stream().mapToInt(BlockPos::getX).max().getAsInt();
             int minY = plane.stream().mapToInt(BlockPos::getY).min().getAsInt();
@@ -647,8 +674,9 @@ public class SchematicLoader {
 
                 facing = possibleFacings.getFirst();
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, 1, 1, markerBlock));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w=1 h=1 markertype={}", corner, facing, markerBlock);
+                int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, 1, 1);
+                result.add(new ConnectionPoint(corner, facing, 1, 1, hashPattern(pattern), pattern));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w=1 h=1 pattern={}", corner, facing, result.getLast().patternHash());
                 continue;
             }
 
@@ -667,8 +695,13 @@ public class SchematicLoader {
                 int planeWidth  = maxX - minX + 1;
                 int planeHeight = maxZ - minZ + 1;
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, markerBlock));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} markertype={}", corner, facing, planeWidth, planeHeight, markerBlock);
+                if (plane.size() != planeWidth * planeHeight) {
+                    liminalness.LOGGER.warn("schematic loader - horizontal marker plane at {} is not a full rectangle, skipping", corner);
+                    continue;
+                }
+                int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, planeWidth, planeHeight);
+                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, hashPattern(pattern), pattern));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} pattern={}", corner, facing, planeWidth, planeHeight, result.getLast().patternHash());
 
                 // marker plane flat on x axis (east or west)
             } else if (spanX == 0 && spanZ > 0) {
@@ -685,8 +718,13 @@ public class SchematicLoader {
                 int planeWidth  = maxZ - minZ + 1;
                 int planeHeight = maxY - minY + 1;
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, markerBlock));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} markertype={}", corner, facing, planeWidth, planeHeight, markerBlock);
+                if (plane.size() != planeWidth * planeHeight) {
+                    liminalness.LOGGER.warn("schematic loader - vertical X marker plane at {} is not a full rectangle, skipping", corner);
+                    continue;
+                }
+                int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, planeWidth, planeHeight);
+                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, hashPattern(pattern), pattern));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} pattern={}", corner, facing, planeWidth, planeHeight, result.getLast().patternHash());
 
                 // marker plane flat on z axis (north or south)
             } else if (spanZ == 0 && spanX > 0) {
@@ -703,8 +741,13 @@ public class SchematicLoader {
                 int planeWidth  = maxX - minX + 1;
                 int planeHeight = maxY - minY + 1;
                 BlockPos corner = new BlockPos(minX, minY, minZ);
-                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, markerBlock));
-                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} markertype={}", corner, facing, planeWidth, planeHeight, markerBlock);
+                if (plane.size() != planeWidth * planeHeight) {
+                    liminalness.LOGGER.warn("schematic loader - vertical Z marker plane at {} is not a full rectangle, skipping", corner);
+                    continue;
+                }
+                int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, planeWidth, planeHeight);
+                result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, hashPattern(pattern), pattern));
+                liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} pattern={}", corner, facing, planeWidth, planeHeight, result.getLast().patternHash());
 
             } else {
                 liminalness.LOGGER.warn("schematic loader - skipping, no marker plane on spanX={} spanY={} spanZ={}", spanX, spanY, spanZ);
@@ -712,6 +755,52 @@ public class SchematicLoader {
         }
 
         return result;
+    }
+
+    private static int[] buildPatternForFacing(Set<BlockPos> plane, Map<BlockPos, Block> markerBlockTypes, BlockPos corner, Direction facing, int width, int height) {
+        int[] pattern = new int[width * height];
+
+        if (facing == Direction.UP || facing == Direction.DOWN) {
+            for (int dz = 0; dz < height; dz++) {
+                for (int dx = 0; dx < width; dx++) {
+                    BlockPos pos = corner.offset(dx, 0, dz);
+                    pattern[dz * width + dx] = markerIdAt(markerBlockTypes, pos);
+                }
+            }
+        } else if (facing == Direction.WEST || facing == Direction.EAST) {
+            for (int dy = 0; dy < height; dy++) {
+                for (int dz = 0; dz < width; dz++) {
+                    BlockPos pos = corner.offset(0, dy, dz);
+                    pattern[dy * width + dz] = markerIdAt(markerBlockTypes, pos);
+                }
+            }
+        } else {
+            for (int dy = 0; dy < height; dy++) {
+                for (int dx = 0; dx < width; dx++) {
+                    BlockPos pos = corner.offset(dx, dy, 0);
+                    pattern[dy * width + dx] = markerIdAt(markerBlockTypes, pos);
+                }
+            }
+        }
+
+        return pattern;
+    }
+
+    private static int markerIdAt(Map<BlockPos, Block> markerBlockTypes, BlockPos pos) {
+        Block block = markerBlockTypes.get(pos);
+        if (block == null) {
+            throw new IllegalStateException("missing marker block at " + pos);
+        }
+        return BuiltInRegistries.BLOCK.getId(block);
+    }
+
+    private static long hashPattern(int[] pattern) {
+        long hash = 0xcbf29ce484222325L;
+        for (int cell : pattern) {
+            hash ^= cell;
+            hash *= 0x100000001b3L;
+        }
+        return hash;
     }
 
     private static List<Set<BlockPos>> findConnectedComponents(Set<BlockPos> input) {
