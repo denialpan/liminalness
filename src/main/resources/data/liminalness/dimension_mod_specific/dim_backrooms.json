@@ -10,8 +10,15 @@
   "min_rooms": 100,
 
   "default_weight": 2,
+  "default_can_connect_itself": true,
   "default_schematics_dir": "schematics",
   "schematics": [
+
+    {
+      "name": "ddd_backrooms_level_1_hall_secret_reward_2_1.schem",
+      "weight": 100,
+      "can_connect_itself": false
+    }
 
   ]
 }

@@ -18,6 +18,11 @@ import java.util.Optional;
 
 public class DimensionConfigLoader {
 
+    private record SchematicSettings(
+        int weight,
+        boolean canConnectItself
+    ) {}
+
     public static DimensionConfig load(String configPath) throws Exception {
         InputStream stream = liminalness.class.getResourceAsStream(configPath);
         if (stream == null) throw new Exception("dimension config - config not found: " + configPath);
@@ -45,23 +50,31 @@ public class DimensionConfigLoader {
         int stepsPerTick     = json.get("steps_per_tick").getAsInt();
         int minRooms         = json.has("min_rooms") ? json.get("min_rooms").getAsInt() : 100;
         int defaultWeight    = json.has("default_weight") ? json.get("default_weight").getAsInt() : 1;
+        boolean defaultCanConnectItself = !json.has("default_can_connect_itself") || json.get("default_can_connect_itself").getAsBoolean();
         String defaultSchematicsDir = json.has("default_schematics_dir") ? json.get("default_schematics_dir").getAsString() : "schematics";
 
         JsonArray schematicsJson = json.has("schematics") ? json.getAsJsonArray("schematics") : new JsonArray();
-        Map<String, Integer> schematicWeights = discoverSchematics(defaultSchematicsDir, defaultNamespace, resourceManager, defaultWeight);
+        Map<String, SchematicSettings> schematicSettings = discoverSchematics(
+            defaultSchematicsDir,
+            defaultNamespace,
+            resourceManager,
+            defaultWeight,
+            defaultCanConnectItself
+        );
 
         for (var elem : schematicsJson) {
             JsonObject obj = elem.getAsJsonObject();
             String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), defaultSchematicsDir);
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
-            schematicWeights.put(path, weight);
+            boolean canConnectItself = !obj.has("can_connect_itself") || obj.get("can_connect_itself").getAsBoolean();
+            schematicSettings.put(path, new SchematicSettings(weight, canConnectItself));
         }
 
         List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
 
-        for (var entry : schematicWeights.entrySet()) {
+        for (var entry : schematicSettings.entrySet()) {
             String path = entry.getKey();
-            int weight = entry.getValue();
+            SchematicSettings settings = entry.getValue();
             try (InputStream schematicStream = openSchematic(path, defaultNamespace, resourceManager)) {
                 if (schematicStream == null) {
                     liminalness.LOGGER.error("dimension config - schematic not found: {} referenced by {}", path, sourceName);
@@ -69,8 +82,8 @@ public class DimensionConfigLoader {
                 }
 
                 SchematicLoader.Schematic schematic = SchematicLoader.load(schematicStream);
-                entries.add(new DimensionConfig.SchematicEntry(path, weight, schematic));
-                liminalness.LOGGER.info("dimension config - loaded schematic: {} weight={}", path, weight);
+                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.canConnectItself(), schematic));
+                liminalness.LOGGER.info("dimension config - loaded schematic: {} weight={} can_connect_itself={}", path, settings.weight(), settings.canConnectItself());
             } catch (Exception e) {
                 liminalness.LOGGER.error("dimension config - failed to load schematic: {} referenced by {}: {}", path, sourceName, e.toString());
             }
@@ -107,8 +120,14 @@ public class DimensionConfigLoader {
         return prefix + value;
     }
 
-    private static Map<String, Integer> discoverSchematics(String defaultSchematicsDir, String defaultNamespace, ResourceManager resourceManager, int defaultWeight) {
-        Map<String, Integer> discovered = new LinkedHashMap<>();
+    private static Map<String, SchematicSettings> discoverSchematics(
+        String defaultSchematicsDir,
+        String defaultNamespace,
+        ResourceManager resourceManager,
+        int defaultWeight,
+        boolean defaultCanConnectItself
+    ) {
+        Map<String, SchematicSettings> discovered = new LinkedHashMap<>();
         if (resourceManager == null) {
             return discovered;
         }
@@ -122,7 +141,10 @@ public class DimensionConfigLoader {
         resources.keySet().stream()
             .map(ResourceLocation::getPath)
             .sorted()
-            .forEach(path -> discovered.put(path.startsWith(prefix) ? path : prefix + path, defaultWeight));
+            .forEach(path -> discovered.put(
+                path.startsWith(prefix) ? path : prefix + path,
+                new SchematicSettings(defaultWeight, defaultCanConnectItself)
+            ));
 
         return discovered;
     }

@@ -17,6 +17,7 @@ public record DimensionConfig(
     public record SchematicEntry(
         String path,
         int weight,
+        boolean canConnectItself,
         SchematicLoader.Schematic schematic  // populated after loading
     ) {}
 }

@@ -70,6 +70,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private final Map<SchematicLoader.Schematic, String> schematicPaths = new HashMap<>();
     private final Map<String, SchematicLoader.Schematic> pathToSchematic = new HashMap<>();
     private final Map<SchematicLoader.Schematic, Integer> schematicWeights = new HashMap<>();
+    private final Map<SchematicLoader.Schematic, String> schematicFamilies = new HashMap<>();
+    private final Map<String, Boolean> familyCanConnectItself = new HashMap<>();
+    private final Map<String, List<SchematicLoader.Schematic>> variantsByBasePath = new HashMap<>();
     protected List<SchematicLoader.Schematic> schematics = new ArrayList<>();
     protected List<SchematicLoader.Schematic> weightedPool = new ArrayList<>();
     protected List<SchematicLoader.Schematic> spawnPool = new ArrayList<>();
@@ -85,6 +88,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public BlockState fillSpaceState = Blocks.SMOOTH_SANDSTONE.defaultBlockState();
 
     public record FrontierEntry(
+            BlockPos sourceRoomOrigin,
             BlockPos attachPoint,
             Direction incomingFacing,
             int width,
@@ -127,6 +131,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.schematicPaths.clear();
         this.pathToSchematic.clear();
         this.schematicWeights.clear();
+        this.schematicFamilies.clear();
+        this.familyCanConnectItself.clear();
+        this.variantsByBasePath.clear();
         this.schematics.clear();
         this.weightedPool.clear();
         this.spawnPool.clear();
@@ -154,16 +161,23 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         minRooms         = dimensionConfig.minRooms();
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
-            List<Map.Entry<String, SchematicLoader.Schematic>> variants =
-                    SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic());
+            List<Map.Entry<String, SchematicLoader.Schematic>> variants = SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic());
+
+            String family = schematicFamily(entry.path());
+            familyCanConnectItself.put(family, entry.canConnectItself());
+            List<SchematicLoader.Schematic> familyVariants = new ArrayList<>();
 
             boolean firstVariant = true;
             for (Map.Entry<String, SchematicLoader.Schematic> variant : variants) {
+
                 SchematicLoader.Schematic schematic = variant.getValue();
+                familyVariants.add(schematic);
                 schematics.add(schematic);
                 schematicPaths.put(schematic, variant.getKey());
                 pathToSchematic.put(variant.getKey(), schematic);
                 schematicWeights.put(schematic, entry.weight());
+                schematicFamilies.put(schematic, family);
+
                 if (firstVariant) {
                     pathToSchematic.put(entry.path(), schematic);
                     firstVariant = false;
@@ -181,6 +195,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                     this.weightedPool.add(schematic);
                 }
             }
+
+            variantsByBasePath.put(entry.path(), familyVariants);
         }
 
         spatialIndex.clear();
@@ -192,9 +208,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
             if (entry.weight() == 0) continue;
-            for (Map.Entry<String, SchematicLoader.Schematic> variant : SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic())) {
-
-                SchematicLoader.Schematic schematic = variant.getValue();
+            for (SchematicLoader.Schematic schematic : variantsByBasePath.getOrDefault(entry.path(), List.of())) {
                 for (SchematicLoader.ConnectionPoint connectionPoint : schematic.connectionPoints()) {
 
                     long key = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash());
@@ -561,7 +575,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
 
             if (!claimed.contains(attachPoint)) {
-                frontiers.add(new FrontierEntry(attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash()));
+                frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash()));
             }
 
         }
@@ -576,7 +590,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 BlockPos worldCorner = origin.offset(connectionPoint.corner());
                 BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
                 if (!this.claimed.contains(attachPoint)) {
-                    frontiers.add(new FrontierEntry(attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash()));
+                    frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash()));
                 }
             }
         }
@@ -742,6 +756,11 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         Map<SchematicLoader.Schematic, List<PlacementOption>> validPlacements = new LinkedHashMap<>();
 
         for (SchematicLoader.Schematic candidate : candidates) {
+
+            if (!canConnectItself(entry.sourceRoomOrigin(), candidate)) {
+                continue;
+            }
+
             List<SchematicLoader.ConnectionPoint> matches = candidate.connectionPointIndex().get(key);
             if (matches == null) continue;
 
@@ -801,6 +820,19 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         writeToWorld(candidateOrigin, candidate);
         registerBlockMarkers(candidateOrigin, candidate);
 
+        // schematic family check
+        SchematicLoader.Schematic source = roomOrigins.get(entry.sourceRoomOrigin());
+        String sourceFamily = source != null ? schematicFamilies.getOrDefault(source, "unknown") : "unknown";
+        String candidateFamily = schematicFamilies.getOrDefault(candidate, "unknown");
+//        liminalness.LOGGER.info(
+//            "frontier generator - placement source_family={} source_origin={} candidate_family={} candidate_path={} candidate_origin={}",
+//            sourceFamily,
+//            entry.sourceRoomOrigin(),
+//            candidateFamily,
+//            getPathBySchematic(candidate),
+//            candidateOrigin
+//        );
+
         final BlockPos finalOrigin = candidateOrigin;
         final SchematicLoader.Schematic finalCandidate = candidate;
         serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalCandidate));
@@ -809,7 +841,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             BlockPos worldCorner = candidateOrigin.offset(connectionPoint.corner());
             BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
             if (!claimed.contains(attachPoint)) {
-                frontiers.add(new FrontierEntry(attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash()));
+                frontiers.add(new FrontierEntry(candidateOrigin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash()));
             }
         }
     }
@@ -1016,6 +1048,27 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public SchematicLoader.Schematic getSchematicByPath(String path) {
         return pathToSchematic.get(path);
+    }
+
+    private boolean canConnectItself(BlockPos sourceRoomOrigin, SchematicLoader.Schematic candidate) {
+
+        SchematicLoader.Schematic source = roomOrigins.get(sourceRoomOrigin);
+        if (source == null) {
+            return true;
+        }
+
+        String sourceFamily = schematicFamilies.get(source);
+        String candidateFamily = schematicFamilies.get(candidate);
+        if (sourceFamily == null || !sourceFamily.equals(candidateFamily)) {
+            return true;
+        }
+
+        return familyCanConnectItself.getOrDefault(sourceFamily, true);
+    }
+
+    private String schematicFamily(String path) {
+        int variantSeparator = path.indexOf('#');
+        return variantSeparator >= 0 ? path.substring(0, variantSeparator) : path;
     }
 
 
