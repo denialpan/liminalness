@@ -9,14 +9,38 @@
   "steps_per_tick": 10,
   "min_rooms": 100,
 
-  "default_weight": 2,
+  "default_weight": 5,
   "default_can_connect_itself": true,
   "default_schematics_dir": "schematics",
   "schematics": [
 
     {
-      "name": "ddd_backrooms_level_1_hall_secret_reward_2_1.schem",
-      "weight": 100,
+      "name": "ddd_backrooms_level_1_hall_intersection_1.schem",
+      "weight": 1,
+      "can_connect_itself": false
+    },
+
+    {
+      "name": "ddd_backrooms_level_1_hall_turn_intersection_1.schem",
+      "weight": 1,
+      "can_connect_itself": false
+    },
+
+    {
+      "name": "ddd_backrooms_level_1_loot_1.schem",
+      "weight": 1,
+      "can_connect_itself": false
+    },
+
+    {
+      "name": "ddd_backrooms_level_1_loot_2.schem",
+      "weight": 1,
+      "can_connect_itself": false
+    },
+
+    {
+      "name": "ddd_backrooms_level_1_loot_3.schem",
+      "weight": 1,
       "can_connect_itself": false
     }
 
