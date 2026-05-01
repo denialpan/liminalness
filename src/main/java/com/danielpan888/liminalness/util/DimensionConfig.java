@@ -1,6 +1,7 @@
 package com.danielpan888.liminalness.util;
 
 import java.util.List;
+import java.util.Set;
 
 public record DimensionConfig(
     String dimension,
@@ -18,6 +19,7 @@ public record DimensionConfig(
         String path,
         int weight,
         boolean canConnectItself,
+        Set<Integer> levels,
         SchematicLoader.Schematic schematic  // populated after loading
     ) {}
 }

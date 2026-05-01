@@ -11,16 +11,19 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class DimensionConfigLoader {
 
     private record SchematicSettings(
         int weight,
-        boolean canConnectItself
+        boolean canConnectItself,
+        Set<Integer> levels
     ) {}
 
     public static DimensionConfig load(String configPath) throws Exception {
@@ -51,6 +54,7 @@ public class DimensionConfigLoader {
         int minRooms         = json.has("min_rooms") ? json.get("min_rooms").getAsInt() : 100;
         int defaultWeight    = json.has("default_weight") ? json.get("default_weight").getAsInt() : 1;
         boolean defaultCanConnectItself = !json.has("default_can_connect_itself") || json.get("default_can_connect_itself").getAsBoolean();
+        Set<Integer> defaultSchematicLevels = json.has("default_schematic_levels") ? parseLevels(json.getAsJsonArray("default_schematic_levels")) : Set.of(1);
         String defaultSchematicsDir = json.has("default_schematics_dir") ? json.get("default_schematics_dir").getAsString() : "schematics";
 
         JsonArray schematicsJson = json.has("schematics") ? json.getAsJsonArray("schematics") : new JsonArray();
@@ -59,7 +63,8 @@ public class DimensionConfigLoader {
             defaultNamespace,
             resourceManager,
             defaultWeight,
-            defaultCanConnectItself
+            defaultCanConnectItself,
+            defaultSchematicLevels
         );
 
         for (var elem : schematicsJson) {
@@ -67,7 +72,8 @@ public class DimensionConfigLoader {
             String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), defaultSchematicsDir);
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
             boolean canConnectItself = !obj.has("can_connect_itself") || obj.get("can_connect_itself").getAsBoolean();
-            schematicSettings.put(path, new SchematicSettings(weight, canConnectItself));
+            Set<Integer> levels = obj.has("level") ? parseLevels(obj.getAsJsonArray("level")) : obj.has("schematic_level") ? parseLevels(obj.getAsJsonArray("schematic_level")) : defaultSchematicLevels;
+            schematicSettings.put(path, new SchematicSettings(weight, canConnectItself, levels));
         }
 
         List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
@@ -82,8 +88,8 @@ public class DimensionConfigLoader {
                 }
 
                 SchematicLoader.Schematic schematic = SchematicLoader.load(schematicStream);
-                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.canConnectItself(), schematic));
-                liminalness.LOGGER.info("dimension config - loaded schematic: {} weight={} can_connect_itself={}", path, settings.weight(), settings.canConnectItself());
+                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.canConnectItself(), settings.levels(), schematic));
+                liminalness.LOGGER.info("dimension config - loaded schematic: {} weight={} can_connect_itself={} levels={}", path, settings.weight(), settings.canConnectItself(), settings.levels());
             } catch (Exception e) {
                 liminalness.LOGGER.error("dimension config - failed to load schematic: {} referenced by {}: {}", path, sourceName, e.toString());
             }
@@ -96,14 +102,13 @@ public class DimensionConfigLoader {
     }
 
     private static InputStream openSchematic(String path, String defaultNamespace, ResourceManager resourceManager) throws Exception {
+
         if (resourceManager == null) {
             String fullPath = "/data/" + defaultNamespace + "/" + path;
             return liminalness.class.getResourceAsStream(fullPath);
         }
 
-        ResourceLocation schematicId = path.contains(":")
-                ? ResourceLocation.parse(path)
-                : ResourceLocation.fromNamespaceAndPath(defaultNamespace, path);
+        ResourceLocation schematicId = path.contains(":") ? ResourceLocation.parse(path) : ResourceLocation.fromNamespaceAndPath(defaultNamespace, path);
 
         Optional<Resource> resource = resourceManager.getResource(schematicId);
         return resource.map(r -> {
@@ -125,7 +130,8 @@ public class DimensionConfigLoader {
         String defaultNamespace,
         ResourceManager resourceManager,
         int defaultWeight,
-        boolean defaultCanConnectItself
+        boolean defaultCanConnectItself,
+        Set<Integer> defaultLevels
     ) {
         Map<String, SchematicSettings> discovered = new LinkedHashMap<>();
         if (resourceManager == null) {
@@ -133,9 +139,7 @@ public class DimensionConfigLoader {
         }
 
         String prefix = defaultSchematicsDir.endsWith("/") ? defaultSchematicsDir : defaultSchematicsDir + "/";
-        Map<ResourceLocation, Resource> resources = resourceManager.listResources(
-            defaultSchematicsDir,
-            id -> id.getNamespace().equals(defaultNamespace) && id.getPath().endsWith(".schem")
+        Map<ResourceLocation, Resource> resources = resourceManager.listResources(defaultSchematicsDir, id -> id.getNamespace().equals(defaultNamespace) && id.getPath().endsWith(".schem")
         );
 
         resources.keySet().stream()
@@ -143,9 +147,20 @@ public class DimensionConfigLoader {
             .sorted()
             .forEach(path -> discovered.put(
                 path.startsWith(prefix) ? path : prefix + path,
-                new SchematicSettings(defaultWeight, defaultCanConnectItself)
+                new SchematicSettings(defaultWeight, defaultCanConnectItself, defaultLevels)
             ));
 
         return discovered;
+    }
+
+    private static Set<Integer> parseLevels(JsonArray levelsJson) {
+        LinkedHashSet<Integer> levels = new LinkedHashSet<>();
+        for (var elem : levelsJson) {
+            levels.add(elem.getAsInt());
+        }
+        if (levels.isEmpty()) {
+            levels.add(1);
+        }
+        return Set.copyOf(levels);
     }
 }
