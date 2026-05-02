@@ -411,14 +411,18 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 continue;
             }
             int[] extents = getExtents(schematic);
-            if (centerX < origin.getX() || centerX > origin.getX() + extents[0]) {
+
+            // offset by 1 boundary length
+            if (centerX < origin.getX() || centerX >= origin.getX() + extents[0]) {
                 continue;
             }
-            if (centerZ < origin.getZ() || centerZ > origin.getZ() + extents[2]) {
+            if (centerZ < origin.getZ() || centerZ >= origin.getZ() + extents[2]) {
                 continue;
             }
+
             return origin;
         }
+
         return null;
     }
 
@@ -429,7 +433,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         int minZ = origin.getZ();
         int maxZ = origin.getZ() + candidateExtents[2];
 
-        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX + 1, minZ, maxZ + 1);
+        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
         for (BlockPos existingOrigin : nearbyRooms) {
             SchematicLoader.Schematic existing = roomOrigins.get(existingOrigin);
             if (existing == null) {
@@ -444,12 +448,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     }
 
     private boolean boxesOverlap(BlockPos aOrigin, int[] aExtents, BlockPos bOrigin, int[] bExtents) {
-        return aOrigin.getX() <= bOrigin.getX() + bExtents[0]
-                && aOrigin.getX() + aExtents[0] >= bOrigin.getX()
-                && aOrigin.getY() <= bOrigin.getY() + bExtents[1]
-                && aOrigin.getY() + aExtents[1] >= bOrigin.getY()
-                && aOrigin.getZ() <= bOrigin.getZ() + bExtents[2]
-                && aOrigin.getZ() + aExtents[2] >= bOrigin.getZ();
+        return aOrigin.getX() < bOrigin.getX() + bExtents[0]
+            && aOrigin.getX() + aExtents[0] > bOrigin.getX()
+            && aOrigin.getY() < bOrigin.getY() + bExtents[1]
+            && aOrigin.getY() + aExtents[1] > bOrigin.getY()
+            && aOrigin.getZ() < bOrigin.getZ() + bExtents[2]
+            && aOrigin.getZ() + aExtents[2] > bOrigin.getZ();
     }
 
     private int randomInRange(long hash, int minInclusive, int maxInclusive) {
@@ -529,8 +533,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 );
             };
 
-            if (candidateOrigin.getY() < minGenerationY ||
-                    candidateOrigin.getY() + candidateExtents[1] > maxGenerationY) {
+            if (candidateOrigin.getY() < minGenerationY || candidateOrigin.getY() + candidateExtents[1] > maxGenerationY + 1) {
                 continue;
             }
 
@@ -779,8 +782,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 BlockPos candidateOrigin = entry.attachPoint().subtract(matchingConnectionPoint.corner());
 
                 int[] extents = getExtents(candidate);
-                if (candidateOrigin.getY() < minGenerationY ||
-                        candidateOrigin.getY() + extents[1] > maxGenerationY) continue;
+                if (candidateOrigin.getY() < minGenerationY || candidateOrigin.getY() + extents[1] > maxGenerationY + 1) continue;
 
                 if (overlapsAny(candidate, candidateOrigin)) continue;
 
@@ -877,9 +879,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         int[] extents = getExtents(schematic);
         int minChunkX = origin.getX() >> 4;
-        int maxChunkX = (origin.getX() + extents[0]) >> 4;
+        int maxChunkX = (origin.getX() + extents[0] - 1) >> 4;
         int minChunkZ = origin.getZ() >> 4;
-        int maxChunkZ = (origin.getZ() + extents[2]) >> 4;
+        int maxChunkZ = (origin.getZ() + extents[2] - 1) >> 4;
 
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {

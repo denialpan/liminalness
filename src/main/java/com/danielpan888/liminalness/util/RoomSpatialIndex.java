@@ -29,8 +29,8 @@ public class RoomSpatialIndex {
 
         roomAABBs.put(origin, new int[]{minX, minY, minZ, maxX, maxY, maxZ});
 
-        int cellMinX = toCell(minX), cellMaxX = toCell(maxX);
-        int cellMinZ = toCell(minZ), cellMaxZ = toCell(maxZ);
+        int cellMinX = toCell(minX), cellMaxX = toCell(Math.max(minX, maxX - 1));
+        int cellMinZ = toCell(minZ), cellMaxZ = toCell(Math.max(minZ, maxZ - 1));
 
         for (int cx = cellMinX; cx <= cellMaxX; cx++) {
             for (int cz = cellMinZ; cz <= cellMaxZ; cz++) {
@@ -44,8 +44,8 @@ public class RoomSpatialIndex {
         int cMinY = origin.getY(), cMaxY = cMinY + extents[1];
         int cMinZ = origin.getZ(), cMaxZ = cMinZ + extents[2];
 
-        int cellMinX = toCell(cMinX), cellMaxX = toCell(cMaxX);
-        int cellMinZ = toCell(cMinZ), cellMaxZ = toCell(cMaxZ);
+        int cellMinX = toCell(cMinX), cellMaxX = toCell(Math.max(cMinX, cMaxX - 1));
+        int cellMinZ = toCell(cMinZ), cellMaxZ = toCell(Math.max(cMinZ, cMaxZ - 1));
 
         Set<BlockPos> checked = new HashSet<>();
 

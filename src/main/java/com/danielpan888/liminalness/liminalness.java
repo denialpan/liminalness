@@ -116,8 +116,9 @@ public class liminalness {
             if (schematic == null) { allResolved = false; continue; }
 
             int[] e = gen.getExtents(schematic);
-            if (origin.getX() + e[0] < minX || origin.getX() >= maxX) continue;
-            if (origin.getZ() + e[2] < minZ || origin.getZ() >= maxZ) continue;
+
+            if (origin.getX() + e[0] <= minX || origin.getX() >= maxX) continue;
+            if (origin.getZ() + e[2] <= minZ || origin.getZ() >= maxZ) continue;
 
             for (var block : schematic.finalBlocks().entrySet()) {
                 BlockPos world = origin.offset(block.getKey());

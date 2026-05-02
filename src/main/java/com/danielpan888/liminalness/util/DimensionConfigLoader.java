@@ -71,8 +71,10 @@ public class DimensionConfigLoader {
             JsonObject obj = elem.getAsJsonObject();
             String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), defaultSchematicsDir);
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
-            boolean canConnectItself = !obj.has("can_connect_itself") || obj.get("can_connect_itself").getAsBoolean();
-            Set<Integer> levels = obj.has("level") ? parseLevels(obj.getAsJsonArray("level")) : obj.has("schematic_level") ? parseLevels(obj.getAsJsonArray("schematic_level")) : defaultSchematicLevels;
+            boolean canConnectItself = obj.has("can_connect_itself") ? obj.get("can_connect_itself").getAsBoolean() : defaultCanConnectItself;
+            Set<Integer> levels = obj.has("levels") ? parseLevels(obj.getAsJsonArray("levels")) : obj.has("level")
+                    ? parseLevels(obj.getAsJsonArray("level")) : obj.has("schematic_level")
+                    ? parseLevels(obj.getAsJsonArray("schematic_level")) : defaultSchematicLevels;
             schematicSettings.put(path, new SchematicSettings(weight, canConnectItself, levels));
         }
 

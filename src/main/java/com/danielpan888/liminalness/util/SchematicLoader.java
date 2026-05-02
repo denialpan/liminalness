@@ -268,14 +268,10 @@ public class SchematicLoader {
             finalBlocks.put(marker, Blocks.AIR.defaultBlockState());
         }
 
-        // fill interior air
-        int maxX = blocks.keySet().stream().mapToInt(BlockPos::getX).max().orElse(0);
-        int maxY = blocks.keySet().stream().mapToInt(BlockPos::getY).max().orElse(0);
-        int maxZ = blocks.keySet().stream().mapToInt(BlockPos::getZ).max().orElse(0);
-
-        for (int x = 0; x <= maxX; x++) {
-            for (int y = 0; y <= maxY; y++) {
-                for (int z = 0; z <= maxZ; z++) {
+        // fill interior air from full schematic dimensions, not just solid-block bounds
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                for (int z = 0; z < length; z++) {
                     BlockPos pos = new BlockPos(x, y, z);
                     if (!blocks.containsKey(pos) && !markers.contains(pos)) {
                         finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
@@ -303,9 +299,9 @@ public class SchematicLoader {
             blocks,
             connectionPoints,
             markers,
-            Math.max(0, width - 1),
-            Math.max(0, height - 1),
-            Math.max(0, length - 1),
+            Math.max(0, width),
+            Math.max(0, height),
+            Math.max(0, length),
             finalBlocks,
             portalPositions,
             jigsawPortalPositions,
