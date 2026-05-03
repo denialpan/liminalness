@@ -19,6 +19,7 @@ public record DimensionConfig(
         String path,
         int weight,
         boolean canConnectItself,
+        int weightPenalty,
         Set<Integer> levels,
         SchematicLoader.Schematic schematic  // populated after loading
     ) {}

@@ -9,10 +9,12 @@
   "steps_per_tick": 10,
   "min_rooms": 100,
 
-  "default_weight": 10,
+  "default_weight": 100,
   "default_can_connect_itself": true,
   "default_schematics_dir": "schematics",
   "default_schematic_levels": [1],
+  "default_weight_penalty": 0,
+
   "schematics": [
 
     {
@@ -30,8 +32,9 @@
 
     {
       "name": "ddd_backrooms_level_1_hall_empty_1.schem",
-      "weight": 2,
+      "weight": 20,
       "can_connect_itself": true,
+      "weight_penalty": 1,
       "levels": [1]
     }
   ]
