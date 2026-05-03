@@ -22,7 +22,9 @@ public class DimensionConfigLoader {
 
     private record SchematicSettings(
         int weight,
-        boolean canConnectItself,
+        boolean mirroredVariants,
+        boolean canConnectItselfVertically,
+        boolean canConnectItselfHorizontally,
         int weightPenalty,
         Set<Integer> levels
     ) {}
@@ -55,7 +57,9 @@ public class DimensionConfigLoader {
         int minRooms         = json.has("min_rooms") ? json.get("min_rooms").getAsInt() : 100;
         int defaultWeight    = json.has("default_weight") ? json.get("default_weight").getAsInt() : 1;
         int defaultWeightPenalty = json.has("default_weight_penalty") ? json.get("default_weight_penalty").getAsInt() : 0;
-        boolean defaultCanConnectItself = !json.has("default_can_connect_itself") || json.get("default_can_connect_itself").getAsBoolean();
+        boolean defaultMirroredVariants = !json.has("default_mirrored_variants") || json.get("default_mirrored_variants").getAsBoolean();
+        boolean defaultCanConnectItselfVertically = !json.has("default_can_connect_itself_vertically") || json.get("default_can_connect_itself_vertically").getAsBoolean();
+        boolean defaultCanConnectItselfHorizontally = !json.has("default_can_connect_itself_horizontally") || json.get("default_can_connect_itself_horizontally").getAsBoolean();
         Set<Integer> defaultSchematicLevels = json.has("default_schematic_levels") ? parseLevels(json.getAsJsonArray("default_schematic_levels")) : Set.of(1);
         String defaultSchematicsDir = json.has("default_schematics_dir") ? json.get("default_schematics_dir").getAsString() : "schematics";
 
@@ -66,7 +70,9 @@ public class DimensionConfigLoader {
             resourceManager,
             defaultWeight,
             defaultWeightPenalty,
-            defaultCanConnectItself,
+            defaultMirroredVariants,
+            defaultCanConnectItselfVertically,
+            defaultCanConnectItselfHorizontally,
             defaultSchematicLevels
         );
 
@@ -75,11 +81,13 @@ public class DimensionConfigLoader {
             String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), defaultSchematicsDir);
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
             int weightPenalty = obj.has("weight_penalty") ? obj.get("weight_penalty").getAsInt() : defaultWeightPenalty;
-            boolean canConnectItself = obj.has("can_connect_itself") ? obj.get("can_connect_itself").getAsBoolean() : defaultCanConnectItself;
+            boolean mirroredVariants = obj.has("mirrored_variants") ? obj.get("mirrored_variants").getAsBoolean() : defaultMirroredVariants;
+            boolean canConnectItselfVertically = obj.has("can_connect_itself_vertically") ? obj.get("can_connect_itself_vertically").getAsBoolean() : defaultCanConnectItselfVertically;
+            boolean canConnectItselfHorizontally = obj.has("can_connect_itself_horizontally") ? obj.get("can_connect_itself_horizontally").getAsBoolean() : defaultCanConnectItselfHorizontally;
             Set<Integer> levels = obj.has("levels") ? parseLevels(obj.getAsJsonArray("levels")) : obj.has("level")
                     ? parseLevels(obj.getAsJsonArray("level")) : obj.has("schematic_level")
                     ? parseLevels(obj.getAsJsonArray("schematic_level")) : defaultSchematicLevels;
-            schematicSettings.put(path, new SchematicSettings(weight, canConnectItself, weightPenalty, levels));
+            schematicSettings.put(path, new SchematicSettings(weight, mirroredVariants, canConnectItselfVertically, canConnectItselfHorizontally, weightPenalty, levels));
         }
 
         List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
@@ -94,8 +102,17 @@ public class DimensionConfigLoader {
                 }
 
                 SchematicLoader.Schematic schematic = SchematicLoader.load(schematicStream);
-                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.canConnectItself(), settings.weightPenalty(), settings.levels(), schematic));
-                liminalness.LOGGER.info("dimension config - loaded schematic: {} weight={} weight_penalty={} can_connect_itself={} levels={}", path, settings.weight(), settings.weightPenalty(), settings.canConnectItself(), settings.levels());
+                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.mirroredVariants(), settings.canConnectItselfVertically(), settings.canConnectItselfHorizontally(), settings.weightPenalty(), settings.levels(), schematic));
+                liminalness.LOGGER.info(
+                    "dimension config - loaded schematic: {} weight={} mirrored_variants={} weight_penalty={} can_connect_itself_vertically={} can_connect_itself_horizontally={} levels={}",
+                    path,
+                    settings.weight(),
+                    settings.mirroredVariants(),
+                    settings.weightPenalty(),
+                    settings.canConnectItselfVertically(),
+                    settings.canConnectItselfHorizontally(),
+                    settings.levels()
+                );
             } catch (Exception e) {
                 liminalness.LOGGER.error("dimension config - failed to load schematic: {} referenced by {}: {}", path, sourceName, e.toString());
             }
@@ -137,7 +154,9 @@ public class DimensionConfigLoader {
         ResourceManager resourceManager,
         int defaultWeight,
         int defaultWeightPenalty,
-        boolean defaultCanConnectItself,
+        boolean defaultMirroredVariants,
+        boolean defaultCanConnectItselfVertically,
+        boolean defaultCanConnectItselfHorizontally,
         Set<Integer> defaultLevels
     ) {
         Map<String, SchematicSettings> discovered = new LinkedHashMap<>();
@@ -154,7 +173,7 @@ public class DimensionConfigLoader {
             .sorted()
             .forEach(path -> discovered.put(
                 path.startsWith(prefix) ? path : prefix + path,
-                new SchematicSettings(defaultWeight, defaultCanConnectItself, defaultWeightPenalty, defaultLevels)
+                new SchematicSettings(defaultWeight, defaultMirroredVariants, defaultCanConnectItselfVertically, defaultCanConnectItselfHorizontally, defaultWeightPenalty, defaultLevels)
             ));
 
         return discovered;

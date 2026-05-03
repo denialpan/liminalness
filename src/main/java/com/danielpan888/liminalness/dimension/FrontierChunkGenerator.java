@@ -72,7 +72,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private final Map<SchematicLoader.Schematic, Integer> schematicWeights = new HashMap<>();
     private final Map<SchematicLoader.Schematic, String> schematicFamilies = new HashMap<>();
     private final Map<SchematicLoader.Schematic, Set<Integer>> schematicLevels = new HashMap<>();
-    private final Map<String, Boolean> familyCanConnectItself = new HashMap<>();
+    private final Map<String, Boolean> familyCanConnectItselfVertically = new HashMap<>();
+    private final Map<String, Boolean> familyCanConnectItselfHorizontally = new HashMap<>();
     private final Map<String, Integer> familyWeightPenalty = new HashMap<>();
     private final Map<String, List<SchematicLoader.Schematic>> variantsByBasePath = new HashMap<>();
     private final ArrayDeque<String> recentPlacedFamilies = new ArrayDeque<>();
@@ -140,7 +141,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.schematicWeights.clear();
         this.schematicFamilies.clear();
         this.schematicLevels.clear();
-        this.familyCanConnectItself.clear();
+        this.familyCanConnectItselfVertically.clear();
+        this.familyCanConnectItselfHorizontally.clear();
         this.familyWeightPenalty.clear();
         this.variantsByBasePath.clear();
         this.recentPlacedFamilies.clear();
@@ -172,10 +174,11 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         minRooms         = dimensionConfig.minRooms();
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
-            List<Map.Entry<String, SchematicLoader.Schematic>> variants = SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic());
+            List<Map.Entry<String, SchematicLoader.Schematic>> variants = SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic(), entry.mirroredVariants());
 
             String family = schematicFamily(entry.path());
-            familyCanConnectItself.put(family, entry.canConnectItself());
+            familyCanConnectItselfVertically.put(family, entry.canConnectItselfVertically());
+            familyCanConnectItselfHorizontally.put(family, entry.canConnectItselfHorizontally());
             familyWeightPenalty.put(family, entry.weightPenalty());
             List<SchematicLoader.Schematic> familyVariants = new ArrayList<>();
 
@@ -779,7 +782,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         for (SchematicLoader.Schematic candidate : candidates) {
 
-            if (!canConnectItself(entry.sourceRoomOrigin(), candidate)) {
+            if (!canConnectItself(entry, candidate)) {
                 continue;
             }
             if (!supportsFrontierLevel(candidate, entry.level())) {
@@ -1082,9 +1085,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         return pathToSchematic.get(path);
     }
 
-    private boolean canConnectItself(BlockPos sourceRoomOrigin, SchematicLoader.Schematic candidate) {
+    private boolean canConnectItself(FrontierEntry entry, SchematicLoader.Schematic candidate) {
 
-        SchematicLoader.Schematic source = roomOrigins.get(sourceRoomOrigin);
+        SchematicLoader.Schematic source = roomOrigins.get(entry.sourceRoomOrigin());
         if (source == null) {
             return true;
         }
@@ -1095,7 +1098,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             return true;
         }
 
-        return familyCanConnectItself.getOrDefault(sourceFamily, true);
+        return entry.incomingFacing().getAxis() == Direction.Axis.Y
+            ? familyCanConnectItselfVertically.getOrDefault(sourceFamily, true)
+            : familyCanConnectItselfHorizontally.getOrDefault(sourceFamily, true);
     }
 
     private String schematicFamily(String path) {

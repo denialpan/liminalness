@@ -100,13 +100,22 @@ public class SchematicLoader {
     );
 
     public static List<Map.Entry<String, Schematic>> createHorizontalVariants(String basePath, Schematic base) {
+        return createHorizontalVariants(basePath, base, true);
+    }
+
+    public static List<Map.Entry<String, Schematic>> createHorizontalVariants(String basePath, Schematic base, boolean includeMirrors) {
         List<Map.Entry<String, Schematic>> variants = new ArrayList<>();
+
         for (SchematicVariant transform : SchematicVariant.values()) {
-            String variantPath = transform == SchematicVariant.BASE_SCHEMATIC
-                    ? basePath
-                    : basePath + "#" + transform.suffix();
+
+            if (!includeMirrors && transform.mirror() != null) {
+                continue;
+            }
+
+            String variantPath = transform == SchematicVariant.BASE_SCHEMATIC ? basePath : basePath + "#" + transform.suffix();
             variants.add(Map.entry(variantPath, transform(base, transform)));
         }
+
         return variants;
     }
 
