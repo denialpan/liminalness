@@ -25,6 +25,13 @@
     },
 
     {
+      "name": "ddd_backrooms_level_1_hall_dirt_exhibit_1.schem",
+      "weight": 33,
+      "can_connect_itself": false,
+      "levels": [1]
+    },
+
+    {
       "name": "ddd_backrooms_level_1_hall_empty_start_1.schem",
       "can_connect_itself": false,
       "levels": [1]
@@ -36,6 +43,23 @@
       "can_connect_itself": true,
       "weight_penalty": 1,
       "levels": [1]
+    },
+
+    {
+      "name": "ddd_backrooms_level_1_hall_empty_hole_1.schem",
+      "weight": 20,
+      "can_connect_itself": true,
+      "weight_penalty": 1,
+      "levels": [1, 0]
+    },
+
+    {
+      "name": "ddd_backrooms_level_1_hall_empty_hole_bottom_1.schem",
+      "weight": 20,
+      "can_connect_itself": true,
+      "weight_penalty": 1,
+      "levels": [0]
     }
+
   ]
 }
