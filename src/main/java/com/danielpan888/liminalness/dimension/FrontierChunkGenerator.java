@@ -656,14 +656,17 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             FrontierEntry entry = frontiers.poll();
             scanned++;
 
-            if (claimed.contains(entry.attachPoint())) continue;
+            List<FrontierEntry> competingEntries = collectCompetingFrontiers(entry);
+            FrontierEntry selectedEntry = chooseCompetingFrontier(competingEntries);
 
-            if (belowMinRooms || isInRange(entry.attachPoint(), playerPositions)) {
-                expandFrontier(entry);
+            if (claimed.contains(selectedEntry.attachPoint())) continue;
+
+            if (belowMinRooms || isInRange(selectedEntry.attachPoint(), playerPositions)) {
+                expandFrontier(selectedEntry);
                 processed++;
             } else {
                 if (deferred == null) deferred = new ArrayList<>();
-                deferred.add(entry);
+                deferred.addAll(competingEntries);
             }
         }
 
@@ -751,6 +754,38 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         if (stalePatchedChunks.contains(chunkKey) && queuedStaleChunks.add(chunkKey)) {
             staleChunkQueue.addLast(chunkKey);
         }
+    }
+
+    private List<FrontierEntry> collectCompetingFrontiers(FrontierEntry firstEntry) {
+        List<FrontierEntry> competingEntries = new ArrayList<>();
+        competingEntries.add(firstEntry);
+
+        Iterator<FrontierEntry> iterator = frontiers.iterator();
+        while (iterator.hasNext()) {
+            FrontierEntry candidate = iterator.next();
+            if (candidate.attachPoint().equals(firstEntry.attachPoint())) {
+                competingEntries.add(candidate);
+                iterator.remove();
+            }
+        }
+
+        return competingEntries;
+    }
+
+    private FrontierEntry chooseCompetingFrontier(List<FrontierEntry> competingEntries) {
+        if (competingEntries.size() == 1) {
+            return competingEntries.getFirst();
+        }
+
+        BlockPos attachPoint = competingEntries.getFirst().attachPoint();
+        long hash = worldSeed;
+        hash ^= (long) attachPoint.getX() * 0x9E3779B97F4A7C15L;
+        hash ^= (long) attachPoint.getY() * 0x6C62272E07BB0142L;
+        hash ^= (long) attachPoint.getZ() * 0xD2A98B26625EEE7BL;
+        hash ^= (long) roomOrigins.size() * 0x94D049BB133111EBL;
+
+        int index = (int) Long.remainderUnsigned(hash, competingEntries.size());
+        return competingEntries.get(index);
     }
 
     private boolean isInRange(BlockPos pos, List<BlockPos> players) {

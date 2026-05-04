@@ -95,7 +95,31 @@
       "mirrored_variants": false,
       "can_connect_itself_horizontally": true,
       "levels": [2]
-    }
+    },
 
+    {
+      "name": "ddd_pool_level_2_empty_start_1.schem",
+      "can_connect_itself_vertically": false,
+      "can_connect_itself_horizontally": false,
+      "levels": [2]
+    },
+
+    {
+      "name": "ddd_pool_level_2_empty_ground.schem",
+      "weight": 20,
+      "can_connect_itself_vertically": true,
+      "can_connect_itself_horizontally": true,
+      "weight_penalty": 1,
+      "levels": [2]
+    },
+
+    {
+      "name": "ddd_pool_level_2_empty_water.schem",
+      "weight": 20,
+      "can_connect_itself_vertically": true,
+      "can_connect_itself_horizontally": true,
+      "weight_penalty": 1,
+      "levels": [2]
+    }
   ]
 }
