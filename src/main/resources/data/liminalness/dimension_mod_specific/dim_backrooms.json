@@ -11,6 +11,7 @@
 
   "default_weight": 100,
   "default_mirrored_variants": true,
+  "default_literal_match": true,
   "default_can_connect_itself_vertically": true,
   "default_can_connect_itself_horizontally": true,
   "default_schematics_dir": "schematics",
@@ -51,14 +52,16 @@
       "levels": [1]
     },
 
+    {
+      "name": "ddd_backrooms_level_1_stair_connector_1.schem",
+      "can_connect_itself_horizontally": false
+    },
 
     {
       "name": "ddd_stairs_1.schem",
-      "weight": 20,
       "can_connect_itself_vertically": true,
       "can_connect_itself_horizontally": false,
-      "mirrored_variants": false,
-      "weight_penalty": 1
+      "mirrored_variants": false
     }
 
   ]

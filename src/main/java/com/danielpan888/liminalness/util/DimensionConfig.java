@@ -19,6 +19,7 @@ public record DimensionConfig(
         String path,
         int weight,
         boolean mirroredVariants,
+        boolean literalMatch,
         boolean canConnectItselfVertically,
         boolean canConnectItselfHorizontally,
         int weightPenalty,

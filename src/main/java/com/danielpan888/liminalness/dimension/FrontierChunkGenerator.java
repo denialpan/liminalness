@@ -72,6 +72,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private final Map<SchematicLoader.Schematic, Integer> schematicWeights = new HashMap<>();
     private final Map<SchematicLoader.Schematic, String> schematicFamilies = new HashMap<>();
     private final Map<SchematicLoader.Schematic, Set<Integer>> schematicLevels = new HashMap<>();
+    private final Map<SchematicLoader.Schematic, Boolean> schematicLiteralMatches = new HashMap<>();
     private final Map<String, Boolean> familyCanConnectItselfVertically = new HashMap<>();
     private final Map<String, Boolean> familyCanConnectItselfHorizontally = new HashMap<>();
     private final Map<String, Integer> familyWeightPenalty = new HashMap<>();
@@ -101,6 +102,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             int width,
             int height,
             long patternHash,
+            int[] pattern,
             int level
     ) {}
 
@@ -141,6 +143,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.schematicWeights.clear();
         this.schematicFamilies.clear();
         this.schematicLevels.clear();
+        this.schematicLiteralMatches.clear();
         this.familyCanConnectItselfVertically.clear();
         this.familyCanConnectItselfHorizontally.clear();
         this.familyWeightPenalty.clear();
@@ -193,6 +196,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 schematicWeights.put(schematic, entry.weight());
                 schematicFamilies.put(schematic, family);
                 schematicLevels.put(schematic, entry.levels());
+                schematicLiteralMatches.put(schematic, entry.literalMatch());
 
                 if (firstVariant) {
                     pathToSchematic.put(entry.path(), schematic);
@@ -227,7 +231,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             for (SchematicLoader.Schematic schematic : variantsByBasePath.getOrDefault(entry.path(), List.of())) {
                 for (SchematicLoader.ConnectionPoint connectionPoint : schematic.connectionPoints()) {
 
-                    long key = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash());
+                    long key = connectionShapeSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height());
                     uniqueByKey.computeIfAbsent(key, k -> new LinkedHashMap<>()).merge(schematic, entry.weight(), Math::max);
 
                 }
@@ -597,7 +601,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             for (int level : getLevelsForSchematic(schematic)) {
                 if (!claimed.contains(attachPoint)) {
-                    frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), level));
+                    frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
                 }
             }
 
@@ -614,7 +618,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
                 for (int level : getLevelsForSchematic(schematic)) {
                     if (!this.claimed.contains(attachPoint)) {
-                        frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), level));
+                        frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
                     }
                 }
             }
@@ -763,7 +767,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     private void expandFrontier(FrontierEntry entry) {
 
-        long key = connectionSignature(entry.incomingFacing().getOpposite(), entry.width(), entry.height(), entry.patternHash());
+        long key = connectionShapeSignature(entry.incomingFacing().getOpposite(), entry.width(), entry.height());
         List<SchematicLoader.Schematic> candidates = candidateIndex.getOrDefault(key, List.of());
 
         if (candidates.isEmpty()) {
@@ -789,7 +793,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 continue;
             }
 
-            List<SchematicLoader.ConnectionPoint> matches = candidate.connectionPointIndex().get(key);
+            List<SchematicLoader.ConnectionPoint> matches = getMatchingConnectionPoints(candidate, entry);
             if (matches == null) continue;
 
             for (SchematicLoader.ConnectionPoint matchingConnectionPoint : matches) {
@@ -875,7 +879,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
             for (int level : getLevelsForSchematic(candidate)) {
                 if (!claimed.contains(attachPoint)) {
-                    frontiers.add(new FrontierEntry(candidateOrigin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), level));
+                    frontiers.add(new FrontierEntry(candidateOrigin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
                 }
             }
         }
@@ -1065,6 +1069,17 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         return hash;
     }
 
+    public static long connectionShapeSignature(Direction facing, int width, int height) {
+        long hash = 0xcbf29ce484222325L;
+        hash ^= facing.ordinal();
+        hash *= 0x100000001b3L;
+        hash ^= width;
+        hash *= 0x100000001b3L;
+        hash ^= height;
+        hash *= 0x100000001b3L;
+        return hash;
+    }
+
     private boolean overlapsAny(SchematicLoader.Schematic candidate, BlockPos origin) {
         return spatialIndex.overlapsAny(origin, getExtents(candidate));
     }
@@ -1114,6 +1129,56 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     private boolean supportsFrontierLevel(SchematicLoader.Schematic schematic, int level) {
         return getLevelsForSchematic(schematic).contains(level);
+    }
+
+    private List<SchematicLoader.ConnectionPoint> getMatchingConnectionPoints(SchematicLoader.Schematic candidate, FrontierEntry entry) {
+        List<SchematicLoader.ConnectionPoint> matches = new ArrayList<>();
+        Direction requiredFacing = entry.incomingFacing().getOpposite();
+
+        for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
+            if (connectionPoint.facing() != requiredFacing) {
+                continue;
+            }
+            if (connectionPoint.width() != entry.width() || connectionPoint.height() != entry.height()) {
+                continue;
+            }
+            if (!patternsMatch(entry, candidate, connectionPoint)) {
+                continue;
+            }
+            matches.add(connectionPoint);
+        }
+
+        return matches.isEmpty() ? null : matches;
+    }
+
+    private boolean patternsMatch(FrontierEntry entry, SchematicLoader.Schematic candidate, SchematicLoader.ConnectionPoint connectionPoint) {
+        if (!requiresLiteralMatch(entry.sourceRoomOrigin(), candidate)) {
+            return connectionPoint.patternHash() == entry.patternHash();
+        }
+
+        int[] expectedPattern = literalMatchPattern(entry.incomingFacing(), entry.width(), entry.height(), entry.pattern());
+        return Arrays.equals(connectionPoint.pattern(), expectedPattern);
+    }
+
+    private boolean requiresLiteralMatch(BlockPos sourceRoomOrigin, SchematicLoader.Schematic candidate) {
+        SchematicLoader.Schematic source = roomOrigins.get(sourceRoomOrigin);
+        boolean sourceLiteralMatch = source != null && schematicLiteralMatches.getOrDefault(source, true);
+        boolean candidateLiteralMatch = schematicLiteralMatches.getOrDefault(candidate, true);
+        return sourceLiteralMatch || candidateLiteralMatch;
+    }
+
+    private int[] literalMatchPattern(Direction facing, int width, int height, int[] pattern) {
+        if (facing.getAxis() == Direction.Axis.Y) {
+            return pattern.clone();
+        }
+
+        int[] transformed = new int[pattern.length];
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                transformed[y * width + (width - 1 - x)] = pattern[y * width + x];
+            }
+        }
+        return transformed;
     }
 
     private int getEffectiveWeight(SchematicLoader.Schematic schematic) {
