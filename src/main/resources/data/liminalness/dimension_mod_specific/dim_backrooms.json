@@ -9,7 +9,7 @@
   "steps_per_tick": 10,
   "min_rooms": 100,
 
-  "default_weight": 100,
+  "default_weight": 50,
   "default_mirrored_variants": true,
   "default_literal_match": true,
   "default_can_connect_itself_vertically": true,
@@ -54,14 +54,47 @@
 
     {
       "name": "ddd_backrooms_level_1_stair_connector_1.schem",
-      "can_connect_itself_horizontally": false
+      "mirrored_variants": false,
+      "can_connect_itself_horizontally": false,
+      "weight": 20
+    },
+
+    {
+      "name": "ddd_pool_level_2_stair_connector_1.schem",
+      "mirrored_variants": false,
+      "can_connect_itself_horizontally": false,
+      "levels": [2],
+      "weight": 20
     },
 
     {
       "name": "ddd_stairs_1.schem",
       "can_connect_itself_vertically": true,
       "can_connect_itself_horizontally": false,
-      "mirrored_variants": false
+      "mirrored_variants": false,
+      "levels": [1, 2]
+    },
+
+    {
+      "name": "ddd_pool_level_2_hall_1.schem",
+      "mirrored_variants": false,
+      "levels": [2]
+    },
+
+
+    {
+      "name": "ddd_pool_level_2_intersection_1.schem",
+      "mirrored_variants": false,
+      "can_connect_itself_horizontally": false,
+      "levels": [2]
+    },
+
+    {
+      "name": "ddd_pool_level_2_hall_side_1.schem",
+      "weight": 50,
+      "mirrored_variants": false,
+      "can_connect_itself_horizontally": true,
+      "levels": [2]
     }
 
   ]
