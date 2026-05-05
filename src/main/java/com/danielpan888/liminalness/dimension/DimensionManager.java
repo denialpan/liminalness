@@ -107,7 +107,6 @@ public class DimensionManager {
                     data.applyTo(generator);
 
                     if (!generator.roomOrigins.isEmpty()) {
-                        generator.reconstructFrontier();
                         liminalness.LOGGER.info("dimension manager - restored {} and its {} rooms", dimId, generator.roomOrigins.size());
                         generator.resume();
                     } else {
