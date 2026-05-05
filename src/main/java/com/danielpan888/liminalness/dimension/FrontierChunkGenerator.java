@@ -52,6 +52,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Map<BlockPos, SchematicLoader.Schematic> roomOrigins = new ConcurrentHashMap<>();
     public final Set<BlockPos> claimed = ConcurrentHashMap.newKeySet();
     public final ArrayDeque<FrontierEntry> frontiers = new ArrayDeque<>();
+    private final Map<BlockPos, List<FrontierEntry>> frontierGroups = new HashMap<>();
     public final Map<SchematicLoader.Schematic, int[]> extentsCache = new ConcurrentHashMap<>();
     private final Map<SchematicLoader.Schematic, Map<Long, List<ChunkBlockPlacement>>> chunkPlacementCache = new ConcurrentHashMap<>();
 
@@ -144,6 +145,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.roomOrigins.clear();
         this.claimed.clear();
         this.frontiers.clear();
+        this.frontierGroups.clear();
         this.extentsCache.clear();
         this.chunkPlacementCache.clear();
         this.schematicPaths.clear();
@@ -283,6 +285,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public void clearFrontier() {
         this.frontiers.clear();
+        this.frontierGroups.clear();
     }
 
     public void resetStaleChunkTracking() {
@@ -609,7 +612,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             for (int level : getLevelsForSchematic(schematic)) {
                 if (!claimed.contains(attachPoint)) {
-                    frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
+                    enqueueFrontier(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
                 }
             }
 
@@ -618,6 +621,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public void reconstructFrontier() {
         this.frontiers.clear();
+        this.frontierGroups.clear();
         for (var entry : this.roomOrigins.entrySet()) {
             BlockPos origin = entry.getKey();
             SchematicLoader.Schematic schematic = entry.getValue();
@@ -626,7 +630,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
                 for (int level : getLevelsForSchematic(schematic)) {
                     if (!this.claimed.contains(attachPoint)) {
-                        frontiers.add(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
+                        enqueueFrontier(new FrontierEntry(origin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
                     }
                 }
             }
@@ -661,10 +665,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         List<FrontierEntry> deferred = null;
 
         while (processed < stepsPerTick && scanned < scanLimit && !frontiers.isEmpty()) {
-            FrontierEntry entry = frontiers.poll();
+            List<FrontierEntry> competingEntries = pollFrontierGroup();
+            if (competingEntries == null) {
+                continue;
+            }
             scanned++;
 
-            List<FrontierEntry> competingEntries = collectCompetingFrontiers(entry);
             FrontierEntry selectedEntry = chooseCompetingFrontier(competingEntries);
 
             if (claimed.contains(selectedEntry.attachPoint())) continue;
@@ -678,7 +684,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             }
         }
 
-        if (deferred != null) frontiers.addAll(deferred);
+        if (deferred != null) enqueueFrontiers(deferred);
     }
 
     private void processStaleChunks(List<BlockPos> playerPositions) {
@@ -791,20 +797,31 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
     }
 
-    private List<FrontierEntry> collectCompetingFrontiers(FrontierEntry firstEntry) {
-        List<FrontierEntry> competingEntries = new ArrayList<>();
-        competingEntries.add(firstEntry);
+    private void enqueueFrontier(FrontierEntry entry) {
+        List<FrontierEntry> group = frontierGroups.get(entry.attachPoint());
+        if (group == null) {
+            group = new ArrayList<>();
+            frontierGroups.put(entry.attachPoint(), group);
+            frontiers.addLast(entry);
+        }
+        group.add(entry);
+    }
 
-        Iterator<FrontierEntry> iterator = frontiers.iterator();
-        while (iterator.hasNext()) {
-            FrontierEntry candidate = iterator.next();
-            if (candidate.attachPoint().equals(firstEntry.attachPoint())) {
-                competingEntries.add(candidate);
-                iterator.remove();
+    private void enqueueFrontiers(Collection<FrontierEntry> entries) {
+        for (FrontierEntry entry : entries) {
+            enqueueFrontier(entry);
+        }
+    }
+
+    private List<FrontierEntry> pollFrontierGroup() {
+        while (!frontiers.isEmpty()) {
+            FrontierEntry representative = frontiers.pollFirst();
+            List<FrontierEntry> group = frontierGroups.remove(representative.attachPoint());
+            if (group != null && !group.isEmpty()) {
+                return group;
             }
         }
-
-        return competingEntries;
+        return null;
     }
 
     private FrontierEntry chooseCompetingFrontier(List<FrontierEntry> competingEntries) {
@@ -949,7 +966,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
             for (int level : getLevelsForSchematic(candidate)) {
                 if (!claimed.contains(attachPoint)) {
-                    frontiers.add(new FrontierEntry(candidateOrigin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
+                    enqueueFrontier(new FrontierEntry(candidateOrigin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
                 }
             }
         }
