@@ -53,6 +53,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Set<BlockPos> claimed = ConcurrentHashMap.newKeySet();
     public final ArrayDeque<FrontierEntry> frontiers = new ArrayDeque<>();
     public final Map<SchematicLoader.Schematic, int[]> extentsCache = new ConcurrentHashMap<>();
+    private final Map<SchematicLoader.Schematic, Map<Long, List<ChunkBlockPlacement>>> chunkPlacementCache = new ConcurrentHashMap<>();
 
     public final Set<Long> committedChunks = ConcurrentHashMap.newKeySet();
     public final Set<Long> pendingChunks = ConcurrentHashMap.newKeySet();
@@ -111,6 +112,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             BlockPos origin
     ) {}
 
+    private record ChunkBlockPlacement(
+            BlockPos localPos,
+            BlockState state,
+            boolean chest
+    ) {}
+
     public FrontierChunkGenerator(BiomeSource biomeSource) {
         super(biomeSource);
     }
@@ -138,6 +145,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.claimed.clear();
         this.frontiers.clear();
         this.extentsCache.clear();
+        this.chunkPlacementCache.clear();
         this.schematicPaths.clear();
         this.pathToSchematic.clear();
         this.schematicWeights.clear();
@@ -718,23 +726,50 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 continue;
             }
 
-            for (var block : schematic.finalBlocks().entrySet()) {
-                BlockPos local = block.getKey();
-                BlockPos world = origin.offset(local);
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
+            int relativeChunkX = chunkX - (origin.getX() >> 4);
+            int relativeChunkZ = chunkZ - (origin.getZ() >> 4);
+            List<ChunkBlockPlacement> placements = getChunkPlacements(schematic, relativeChunkX, relativeChunkZ);
+            if (placements.isEmpty()) {
+                continue;
+            }
+
+            for (ChunkBlockPlacement placement : placements) {
+                BlockPos world = origin.offset(placement.localPos());
                 if (!serverLevel.isLoaded(world)) {
                     allResolved = false;
                     continue;
                 }
-                serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
-                if (schematic.chestPositions().contains(local)) {
+                serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
+                if (placement.chest()) {
                     scheduleChestFill(world.immutable(), 0);
                 }
             }
         }
 
         return allResolved;
+    }
+
+    private List<ChunkBlockPlacement> getChunkPlacements(SchematicLoader.Schematic schematic, int relativeChunkX, int relativeChunkZ) {
+        Map<Long, List<ChunkBlockPlacement>> placementsByChunk = chunkPlacementCache.computeIfAbsent(schematic, this::buildChunkPlacementCache);
+        return placementsByChunk.getOrDefault(chunkKey(relativeChunkX, relativeChunkZ), List.of());
+    }
+
+    private Map<Long, List<ChunkBlockPlacement>> buildChunkPlacementCache(SchematicLoader.Schematic schematic) {
+        Map<Long, List<ChunkBlockPlacement>> placementsByChunk = new HashMap<>();
+
+        for (var block : schematic.finalBlocks().entrySet()) {
+            BlockPos local = block.getKey();
+            long relativeChunkKey = chunkKey(local.getX() >> 4, local.getZ() >> 4);
+            placementsByChunk.computeIfAbsent(relativeChunkKey, ignored -> new ArrayList<>()).add(
+                new ChunkBlockPlacement(
+                    local.immutable(),
+                    block.getValue(),
+                    schematic.chestPositions().contains(local)
+                )
+            );
+        }
+
+        return placementsByChunk;
     }
 
     private boolean isChunkNearAnyPlayer(int chunkX, int chunkZ, List<BlockPos> playerPositions) {
