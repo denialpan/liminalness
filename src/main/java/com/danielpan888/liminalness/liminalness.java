@@ -108,17 +108,19 @@ public class liminalness {
         int minX = chunkPosition.getMinBlockX(), maxX = minX + 16;
         int minZ = chunkPosition.getMinBlockZ(), maxZ = minZ + 16;
 
-        Set<BlockPos> nearbyRooms = gen.spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
-        boolean allResolved = true;
+        boolean[] allResolved = {true};
 
-        for (BlockPos origin : nearbyRooms) {
+        gen.spatialIndex.anyRoomInChunk(minX, maxX, minZ, maxZ, origin -> {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
-            if (schematic == null) { allResolved = false; continue; }
+            if (schematic == null) {
+                allResolved[0] = false;
+                return false;
+            }
 
             int[] e = gen.getExtents(schematic);
 
-            if (origin.getX() + e[0] <= minX || origin.getX() >= maxX) continue;
-            if (origin.getZ() + e[2] <= minZ || origin.getZ() >= maxZ) continue;
+            if (origin.getX() + e[0] <= minX || origin.getX() >= maxX) return false;
+            if (origin.getZ() + e[2] <= minZ || origin.getZ() >= maxZ) return false;
 
             for (var block : schematic.finalBlocks().entrySet()) {
                 BlockPos world = origin.offset(block.getKey());
@@ -128,10 +130,10 @@ public class liminalness {
                 BlockState target = block.getValue();
                 gen.serverLevel.setBlock(world, target, Block.UPDATE_CLIENTS);
             }
+            return false;
+        });
 
-        }
-
-        if (allResolved) {
+        if (allResolved[0]) {
             gen.committedChunks.add(key);
         } else {
             gen.markChunkStale(key);

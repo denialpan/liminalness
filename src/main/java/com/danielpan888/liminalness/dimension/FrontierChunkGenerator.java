@@ -433,26 +433,25 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     }
 
     private BlockPos findRoomContaining(int centerX, int centerZ) {
-        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(centerX, centerX + 1, centerZ, centerZ + 1);
-        for (BlockPos origin : nearbyRooms) {
+        BlockPos[] found = new BlockPos[1];
+        spatialIndex.anyRoomInChunk(centerX, centerX + 1, centerZ, centerZ + 1, origin -> {
             SchematicLoader.Schematic schematic = roomOrigins.get(origin);
             if (schematic == null) {
-                continue;
+                return false;
             }
             int[] extents = getExtents(schematic);
 
-            // offset by 1 boundary length
             if (centerX < origin.getX() || centerX >= origin.getX() + extents[0]) {
-                continue;
+                return false;
             }
             if (centerZ < origin.getZ() || centerZ >= origin.getZ() + extents[2]) {
-                continue;
+                return false;
             }
 
-            return origin;
-        }
-
-        return null;
+            found[0] = origin;
+            return true;
+        });
+        return found[0];
     }
 
     private BlockPos findOverlappingRoom(SchematicLoader.Schematic candidate, BlockPos origin) {
@@ -462,18 +461,20 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         int minZ = origin.getZ();
         int maxZ = origin.getZ() + candidateExtents[2];
 
-        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
-        for (BlockPos existingOrigin : nearbyRooms) {
+        BlockPos[] found = new BlockPos[1];
+        spatialIndex.anyRoomInChunk(minX, maxX, minZ, maxZ, existingOrigin -> {
             SchematicLoader.Schematic existing = roomOrigins.get(existingOrigin);
             if (existing == null) {
-                continue;
+                return false;
             }
             int[] existingExtents = getExtents(existing);
             if (boxesOverlap(origin, candidateExtents, existingOrigin, existingExtents)) {
-                return existingOrigin;
+                found[0] = existingOrigin;
+                return true;
             }
-        }
-        return null;
+            return false;
+        });
+        return found[0];
     }
 
     private boolean boxesOverlap(BlockPos aOrigin, int[] aExtents, BlockPos bOrigin, int[] bExtents) {
@@ -722,27 +723,26 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         int minX = chunkX << 4, maxX = minX + 16;
         int minZ = chunkZ << 4, maxZ = minZ + 16;
 
-        Set<BlockPos> nearbyRooms = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
-        boolean allResolved = true;
+        boolean[] allResolved = {true};
 
-        for (BlockPos origin : nearbyRooms) {
+        spatialIndex.anyRoomInChunk(minX, maxX, minZ, maxZ, origin -> {
             SchematicLoader.Schematic schematic = roomOrigins.get(origin);
             if (schematic == null) {
-                allResolved = false;
-                continue;
+                allResolved[0] = false;
+                return false;
             }
 
             int relativeChunkX = chunkX - (origin.getX() >> 4);
             int relativeChunkZ = chunkZ - (origin.getZ() >> 4);
             List<ChunkBlockPlacement> placements = getChunkPlacements(schematic, relativeChunkX, relativeChunkZ);
             if (placements.isEmpty()) {
-                continue;
+                return false;
             }
 
             for (ChunkBlockPlacement placement : placements) {
                 BlockPos world = origin.offset(placement.localPos());
                 if (!serverLevel.isLoaded(world)) {
-                    allResolved = false;
+                    allResolved[0] = false;
                     continue;
                 }
                 serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
@@ -750,9 +750,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                     scheduleChestFill(world.immutable(), 0);
                 }
             }
-        }
+            return false;
+        });
 
-        return allResolved;
+        return allResolved[0];
     }
 
     private List<ChunkBlockPlacement> getChunkPlacements(SchematicLoader.Schematic schematic, int relativeChunkX, int relativeChunkZ) {
@@ -1061,14 +1062,13 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                     chunk.setBlockState(mutable, fillSpaceState, false);
                 }
 
-        Set<BlockPos> roomSnapshot = spatialIndex.getRoomsInChunk(minX, maxX, minZ, maxZ);
-        boolean allResolved = true;
+        boolean[] allResolved = {true};
 
-        for (BlockPos origin : roomSnapshot) {
+        spatialIndex.anyRoomInChunk(minX, maxX, minZ, maxZ, origin -> {
             SchematicLoader.Schematic schematic = roomOrigins.get(origin);
             if (schematic == null) {
-                allResolved = false;
-                continue;
+                allResolved[0] = false;
+                return false;
             }
 
             for (var block : schematic.finalBlocks().entrySet()) {
@@ -1078,10 +1078,11 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 mutable.set(world);
                 chunk.setBlockState(mutable, block.getValue(), false);
             }
-        }
+            return false;
+        });
 
         long ck = chunkKey(chunk.getPos().x, chunk.getPos().z);
-        if (allResolved) {
+        if (allResolved[0]) {
             committedChunks.add(ck);
         } else {
             pendingChunks.add(ck);
