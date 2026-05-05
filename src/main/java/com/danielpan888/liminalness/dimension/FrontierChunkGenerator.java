@@ -62,7 +62,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final RoomSpatialIndex spatialIndex = new RoomSpatialIndex();
 
     private final Map<Long, List<SchematicLoader.Schematic>> candidateIndex = new HashMap<>();
-    private final Map<Long, int[]> candidateCumulativeWeights = new HashMap<>();
 
     public final Set<BlockPos> persistedRooms = ConcurrentHashMap.newKeySet();
     public final Set<Long> stalePatchedChunks = ConcurrentHashMap.newKeySet();
@@ -174,7 +173,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.queuedStaleChunks.clear();
 
         candidateIndex.clear();
-        candidateCumulativeWeights.clear();
 
         worldSeed        = seed;
         generationY      = dimensionConfig.generationY();
@@ -251,17 +249,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         for (var e : uniqueByKey.entrySet()) {
             long key = e.getKey();
             List<SchematicLoader.Schematic> schemList = new ArrayList<>(e.getValue().keySet());
-            int[] weights = e.getValue().values().stream().mapToInt(Integer::intValue).toArray();
-
-            // cumulative weights for O(1) weight pick
-            int[] cumulative = new int[weights.length];
-            cumulative[0] = weights[0];
-            for (int i = 1; i < weights.length; i++) {
-                cumulative[i] = cumulative[i - 1] + weights[i];
-            }
 
             candidateIndex.put(key, schemList);
-            candidateCumulativeWeights.put(key, cumulative);
         }
 
         liminalness.LOGGER.info("frontier generator - initialization complete in: {} with {} schematics and weights: {}", getDimensionId(), schematics.size(), weightedPool.size());
