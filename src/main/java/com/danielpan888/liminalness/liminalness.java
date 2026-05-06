@@ -7,19 +7,31 @@ import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkDestination;
 import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkHandler;
 import com.danielpan888.liminalness.dimension.portallinkage.PortalLinkHandler;
 import com.danielpan888.liminalness.util.SchematicLoader;
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.core.particles.DustColorTransitionOptions;
 import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.ChunkWatchEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -40,6 +52,7 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 // TODO: organize schematic marker and portals?
 // TODO: fix reenter dimension fallback 0 128 0
@@ -90,6 +103,11 @@ public class liminalness {
     public void onServerTick(ServerTickEvent.Post event) {
         DimensionManager.onServerTick(event.getServer());
         checkPortals(event.getServer());
+    }
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent event) {
+        registerDebugCommand(event.getDispatcher());
     }
 
     // intercept server to update client chunks, prevents client race condition
@@ -254,6 +272,81 @@ public class liminalness {
 
         player.teleportTo(target.level(), position.x, position.y, position.z, target.yRot(), target.xRot());
         server.execute(() -> player.connection.teleport(position.x, position.y, position.z, target.yRot(), target.xRot()));
+    }
+
+    private void registerDebugCommand(CommandDispatcher<CommandSourceStack> dispatcher) {
+        dispatcher.register(
+            Commands.literal(MODID)
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("debug")
+                    .then(Commands.argument("dimension", ResourceLocationArgument.id())
+                        .suggests(this::suggestManagedDimensions)
+                        .executes(context -> executeDebugTeleport(
+                            context.getSource(),
+                            ResourceLocationArgument.getId(context, "dimension")
+                        ))
+                    )
+                )
+        );
+    }
+
+    private CompletableFuture<Suggestions> suggestManagedDimensions(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        return SharedSuggestionProvider.suggestResource(DimensionManager.getRegisteredIds(), builder);
+    }
+
+    private int executeDebugTeleport(CommandSourceStack source, ResourceLocation dimensionId) {
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("must be player to use this command"));
+            return 0;
+        }
+
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            source.sendFailure(Component.literal("server unavailable"));
+            return 0;
+        }
+
+        ServerLevel targetLevel = server.getLevel(ResourceKey.create(Registries.DIMENSION, dimensionId));
+        if (targetLevel == null) {
+            source.sendFailure(Component.literal("dimension not found: " + dimensionId));
+            return 0;
+        }
+
+        if (!DimensionManager.isRegistered(dimensionId)) {
+            source.sendFailure(Component.literal("dimension is not managed by liminalness: " + dimensionId));
+            return 0;
+        }
+
+        FrontierChunkGenerator generator = (FrontierChunkGenerator) DimensionManager.getInstance(dimensionId);
+        if (generator == null) {
+            if (!(targetLevel.getChunkSource().getGenerator() instanceof FrontierChunkGenerator frontier)) {
+                source.sendFailure(Component.literal("dimension does not (yet) use the frontier chunk generator: " + dimensionId));
+                return 0;
+            }
+            generator = frontier;
+            generator.serverLevel = targetLevel;
+            generator.dimensionId = dimensionId;
+        }
+
+        if (!generator.initialized) {
+            source.sendFailure(Component.literal("generator is not initialized yet for some reason: " + dimensionId));
+            return 0;
+        }
+
+        BlockPos playerPos = player.blockPosition();
+        if (generator.roomOrigins.isEmpty()) {
+            generator.seedAt(playerPos.getX(), playerPos.getZ());
+        }
+
+        Vec3 spawnPos = generator.ensureLinkedSpawn(playerPos.getX(), playerPos.getZ());
+        player.teleportTo(targetLevel, spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
+        server.execute(() -> player.connection.teleport(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot()));
+
+        source.sendSuccess(() -> Component.literal("teleported to " + dimensionId + " at " + spawnPos), false);
+        return 1;
     }
 
 }
