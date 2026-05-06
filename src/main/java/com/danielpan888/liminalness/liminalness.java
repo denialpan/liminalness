@@ -141,8 +141,47 @@ public class liminalness {
 
     }
 
-    private void checkPortals(MinecraftServer server) {
+    // enter dimension
+    @SubscribeEvent
+    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
+        MinecraftServer server = event.getEntity().getServer();
+        BlockPos pos = event.getPos();
+        BlockState state = level.getBlockState(pos);
+
+        if (!(state.getBlock() instanceof BedBlock)) {
+            return;
+        }
+
+        Optional<BedLinkDestination> destination = BedLinkHandler.resolveDestination(player, pos);
+        if (destination.isEmpty()) {
+            return;
+        }
+
+        BedLinkDestination link = destination.get();
+        Vec3 spawnPos = link.spawnPos();
+        ServerLevel targetLevel = link.level();
+
+        PortalLinkHandler.rememberReturnPoint(player, level, pos);
+
+        player.teleportTo(
+                targetLevel,
+                spawnPos.x,
+                spawnPos.y,
+                spawnPos.z,
+                player.getYRot(),
+                player.getXRot()
+        );
+
+        server.execute(() -> {
+            player.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
+            player.connection.teleport(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
+        });
+    }
+
+    private void checkPortals(MinecraftServer server) {
 
         for (var entry : DimensionManager.getInstances().entrySet()) {
             ResourceLocation dimId = entry.getKey();
@@ -217,43 +256,4 @@ public class liminalness {
         server.execute(() -> player.connection.teleport(position.x, position.y, position.z, target.yRot(), target.xRot()));
     }
 
-    // enter dimension
-    @SubscribeEvent
-    public void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getLevel() instanceof ServerLevel level)) return;
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
-
-        MinecraftServer server = event.getEntity().getServer();
-        BlockPos pos = event.getPos();
-        BlockState state = level.getBlockState(pos);
-
-        if (!(state.getBlock() instanceof BedBlock)) {
-            return;
-        }
-
-        Optional<BedLinkDestination> destination = BedLinkHandler.resolveDestination(player, pos);
-        if (destination.isEmpty()) {
-            return;
-        }
-
-        BedLinkDestination link = destination.get();
-        Vec3 spawnPos = link.spawnPos();
-        ServerLevel targetLevel = link.level();
-
-        PortalLinkHandler.rememberReturnPoint(player, level, pos);
-
-        player.teleportTo(
-            targetLevel,
-            spawnPos.x,
-            spawnPos.y,
-            spawnPos.z,
-            player.getYRot(),
-            player.getXRot()
-        );
-
-        server.execute(() -> {
-            player.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
-            player.connection.teleport(spawnPos.x, spawnPos.y, spawnPos.z, player.getYRot(), player.getXRot());
-        });
-    }
 }

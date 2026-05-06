@@ -80,7 +80,7 @@ public final class BedLinkHandler {
 
         if (generator.roomOrigins.isEmpty() && generator.needsSeed) {
             generator.needsSeed = false;
-            generator.seedFreshAt(startCenterX, startCenterZ);
+            generator.seedAt(startCenterX, startCenterZ);
         }
 
         Vec3 spawnPos = generator.ensureLinkedSpawn(startCenterX, startCenterZ);
