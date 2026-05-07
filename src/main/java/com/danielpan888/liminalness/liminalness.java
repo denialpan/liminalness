@@ -65,16 +65,16 @@ public class liminalness {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public liminalness(IEventBus modEventBus, ModContainer modContainer) {
-        modEventBus.addListener(this::commonSetup);
+//        modEventBus.addListener(this::commonSetup);
         RegisterChunkGenerator.register(modEventBus);
         NeoForge.EVENT_BUS.register(this);
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
     }
 
-    private void commonSetup(FMLCommonSetupEvent event) {
-        DimensionManager.register(ResourceLocation.parse("liminalness:dim_backrooms"));
-        LOGGER.info("Dimensions registered");
-    }
+//    private void commonSetup(FMLCommonSetupEvent event) {
+//        DimensionManager.register(ResourceLocation.parse("liminalness:dim_backrooms"));
+//        LOGGER.info("Dimensions registered");
+//    }
 
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {

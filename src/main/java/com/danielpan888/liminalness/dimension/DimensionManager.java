@@ -19,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DimensionManager {
 
+    private static final String CONFIG_DIRECTORY = "dimension_custom_configuration";
+
     private static final Set<ResourceLocation> registeredIds = ConcurrentHashMap.newKeySet();
     private static final Map<ResourceLocation, ChunkGenerator> instances = new ConcurrentHashMap<>();
     private static final Map<ResourceLocation, DimensionConfig> pendingConfigs = new HashMap<>();
@@ -38,7 +40,7 @@ public class DimensionManager {
         liminalness.LOGGER.info("dimension manager - load config for dimensions: {}", registeredIds);
 
         for (ResourceLocation dimId : registeredIds) {
-            ResourceLocation configId = ResourceLocation.fromNamespaceAndPath(dimId.getNamespace(), "dimension_mod_specific/" + dimId.getPath() + ".json");
+            ResourceLocation configId = ResourceLocation.fromNamespaceAndPath(dimId.getNamespace(), CONFIG_DIRECTORY + "/" + dimId.getPath() + ".json");
             liminalness.LOGGER.info("dimension manager - attempting to load config at {}", configId);
 
             try {
@@ -52,13 +54,13 @@ public class DimensionManager {
     }
 
     private static void discoverDatapackDimensions(ResourceManager resourceManager) {
-        Map<ResourceLocation, net.minecraft.server.packs.resources.Resource> configs = resourceManager.listResources("dimension_mod_specific", id -> id.getPath().endsWith(".json"));
+        Map<ResourceLocation, net.minecraft.server.packs.resources.Resource> configs = resourceManager.listResources(CONFIG_DIRECTORY, id -> id.getPath().endsWith(".json"));
 
         for (ResourceLocation configId : configs.keySet()) {
             String path = configId.getPath();
-            if (!path.startsWith("dimension_mod_specific/")) continue;
+            if (!path.startsWith(CONFIG_DIRECTORY + "/")) continue;
 
-            String dimensionPath = path.substring("dimension_mod_specific/".length(), path.length() - ".json".length());
+            String dimensionPath = path.substring((CONFIG_DIRECTORY + "/").length(), path.length() - ".json".length());
             ResourceLocation dimensionId = ResourceLocation.fromNamespaceAndPath(configId.getNamespace(), dimensionPath);
 
             if (registeredIds.add(dimensionId)) {
