@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.Set;
 
 public record DimensionConfig(
-    String dimension,
     int generationY,
     int minY,
     int maxY,

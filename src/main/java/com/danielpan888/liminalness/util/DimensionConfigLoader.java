@@ -47,7 +47,6 @@ public class DimensionConfigLoader {
     private static DimensionConfig load(InputStream stream, String sourceName, String defaultNamespace, ResourceManager resourceManager) throws Exception {
         JsonObject json = JsonParser.parseReader(new InputStreamReader(stream)).getAsJsonObject();
 
-        String dimension     = json.get("dimension").getAsString();
         int generationY      = json.get("generation_y").getAsInt();
         int minY             = json.get("min_y").getAsInt();
         int maxY             = json.get("max_y").getAsInt();
@@ -124,7 +123,7 @@ public class DimensionConfigLoader {
         }
 
         return new DimensionConfig(
-                dimension, generationY, minY, maxY, fillSpace,
+                generationY, minY, maxY, fillSpace,
                 radiusHorizontal, radiusVertical, stepsPerTick, minRooms, entries
         );
     }
