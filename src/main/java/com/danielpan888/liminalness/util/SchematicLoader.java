@@ -81,7 +81,13 @@ public class SchematicLoader {
 
     ) {}
 
+    private record MarkerDetectionResult(
+        List<ConnectionPoint> connectionPoints,
+        Set<BlockPos> usedMarkers
+    ) {}
+
     public static final Set<Block> MARKER_BLOCKS = Set.of(
+        Blocks.WHITE_STAINED_GLASS,
         Blocks.LIGHT_GRAY_STAINED_GLASS,
         Blocks.GRAY_STAINED_GLASS,
         Blocks.BLACK_STAINED_GLASS,
@@ -159,7 +165,7 @@ public class SchematicLoader {
         }
 
         Map<BlockPos, BlockState> rawBlocks  = new HashMap<>();
-        Set<BlockPos> rawMarkers = new HashSet<>();
+        Set<BlockPos> rawMarkerCandidates = new HashSet<>();
         Map<BlockPos, Block> markerBlockTypes = new HashMap<>();
 
         for (int i = 0; i < blockData.length; i++) {
@@ -171,7 +177,7 @@ public class SchematicLoader {
             BlockPos pos = new BlockPos(x, y, z);
 
             if (MARKER_BLOCKS.contains(state.getBlock())) {
-                rawMarkers.add(pos);
+                rawMarkerCandidates.add(pos);
                 markerBlockTypes.put(pos, state.getBlock());
             } else if (!state.isAir()) {
                 rawBlocks.put(pos, state);
@@ -180,24 +186,43 @@ public class SchematicLoader {
 
         // normalize to 0,0,0
         Set<BlockPos> all = new HashSet<>(rawBlocks.keySet());
-        all.addAll(rawMarkers);
+        all.addAll(rawMarkerCandidates);
 
         int minX = all.stream().mapToInt(BlockPos::getX).min().orElse(0);
         int minY = all.stream().mapToInt(BlockPos::getY).min().orElse(0);
         int minZ = all.stream().mapToInt(BlockPos::getZ).min().orElse(0);
 
-        Map<BlockPos, BlockState> blocks = new HashMap<>();
-        Set<BlockPos> markers = new HashSet<>();
+        Map<BlockPos, BlockState> normalizedSolidBlocks = new HashMap<>();
+        Map<BlockPos, Block> normalizedMarkerBlockTypes = new HashMap<>();
+        Set<BlockPos> normalizedMarkerCandidates = new HashSet<>();
 
         for (var e : rawBlocks.entrySet()) {
-            blocks.put(normalize(e.getKey(), minX, minY, minZ), e.getValue());
+            normalizedSolidBlocks.put(normalize(e.getKey(), minX, minY, minZ), e.getValue());
         }
 
-        Map<BlockPos, Block> normalizedMarkerBlockTypes = new HashMap<>();
-        for (BlockPos p : rawMarkers) {
+        for (BlockPos p : rawMarkerCandidates) {
             BlockPos normalized = normalize(p, minX, minY, minZ);
-            markers.add(normalized);
-            normalizedMarkerBlockTypes.put(normalized, markerBlockTypes.get(p));
+            Block markerBlock = markerBlockTypes.get(p);
+            if (isBoundaryMarkerCandidate(normalized, width, height, length)) {
+                normalizedMarkerCandidates.add(normalized);
+                normalizedMarkerBlockTypes.put(normalized, markerBlock);
+            } else if (markerBlock != null) {
+                normalizedSolidBlocks.put(normalized, markerBlock.defaultBlockState());
+            }
+        }
+
+        MarkerDetectionResult markerDetection = detectConnectionPoints(normalizedMarkerCandidates, normalizedMarkerBlockTypes, normalizedSolidBlocks);
+        List<ConnectionPoint> connectionPoints = markerDetection.connectionPoints();
+        Set<BlockPos> markers = markerDetection.usedMarkers();
+
+        Map<BlockPos, BlockState> blocks = new HashMap<>(normalizedSolidBlocks);
+        for (BlockPos candidateMarker : normalizedMarkerCandidates) {
+            if (!markers.contains(candidateMarker)) {
+                Block decorativeMarker = normalizedMarkerBlockTypes.get(candidateMarker);
+                if (decorativeMarker != null) {
+                    blocks.put(candidateMarker, decorativeMarker.defaultBlockState());
+                }
+            }
         }
 
         Map<BlockPos, BlockState> finalBlocks = new HashMap<>();
@@ -254,7 +279,7 @@ public class SchematicLoader {
             BlockPos pos = entry.getKey();
             BlockState state = entry.getValue();
 
-            if (MARKER_BLOCKS.contains(state.getBlock())) {
+            if (markers.contains(pos) || isSchematicCorner(pos, width, height, length)) {
                 finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
             } else if (state.getBlock() == Blocks.END_PORTAL_FRAME) {
                 portalPositions.add(pos);
@@ -289,10 +314,6 @@ public class SchematicLoader {
             }
         }
 
-
-        // find connection points
-        List<ConnectionPoint> connectionPoints = detectConnectionPoints(markers, normalizedMarkerBlockTypes, blocks);
-
         Map<Long, List<SchematicLoader.ConnectionPoint>> connectionPointIndex = new HashMap<>();
         for (ConnectionPoint connectionPoint : connectionPoints) {
             long sig = connectionSignature(connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash());
@@ -323,6 +344,19 @@ public class SchematicLoader {
 
     private static BlockPos normalize(BlockPos p, int minX, int minY, int minZ) {
         return new BlockPos(p.getX() - minX, p.getY() - minY, p.getZ() - minZ);
+    }
+
+    private static boolean isBoundaryMarkerCandidate(BlockPos pos, int width, int height, int length) {
+        return pos.getX() == 0 || pos.getX() == width - 1
+            || pos.getY() == 0 || pos.getY() == height - 1
+            || pos.getZ() == 0 || pos.getZ() == length - 1;
+    }
+
+    private static boolean isSchematicCorner(BlockPos pos, int width, int height, int length) {
+        boolean edgeX = pos.getX() == 0 || pos.getX() == width - 1;
+        boolean edgeY = pos.getY() == 0 || pos.getY() == height - 1;
+        boolean edgeZ = pos.getZ() == 0 || pos.getZ() == length - 1;
+        return edgeX && edgeY && edgeZ;
     }
 
     private static CompoundTag extractBlockEntityPayload(CompoundTag blockEntityTag) {
@@ -634,9 +668,10 @@ public class SchematicLoader {
         return shifted;
     }
 
-    private static List<ConnectionPoint> detectConnectionPoints(Set<BlockPos> markers, Map<BlockPos, Block> markerBlockTypes, Map<BlockPos, BlockState> blocks) {
+    private static MarkerDetectionResult detectConnectionPoints(Set<BlockPos> markers, Map<BlockPos, Block> markerBlockTypes, Map<BlockPos, BlockState> blocks) {
 
         List<ConnectionPoint> result = new ArrayList<>();
+        Set<BlockPos> usedMarkers = new HashSet<>();
 
         Set<BlockPos> all = new HashSet<>(blocks.keySet());
         all.addAll(markers);
@@ -681,6 +716,7 @@ public class SchematicLoader {
                 BlockPos corner = new BlockPos(minX, minY, minZ);
                 int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, 1, 1);
                 result.add(new ConnectionPoint(corner, facing, 1, 1, hashPattern(pattern), pattern));
+                usedMarkers.addAll(plane);
                 liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w=1 h=1 pattern={}", corner, facing, result.getLast().patternHash());
                 continue;
             }
@@ -706,6 +742,7 @@ public class SchematicLoader {
                 }
                 int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, planeWidth, planeHeight);
                 result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, hashPattern(pattern), pattern));
+                usedMarkers.addAll(plane);
                 liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} pattern={}", corner, facing, planeWidth, planeHeight, result.getLast().patternHash());
 
                 // marker plane flat on x axis (east or west)
@@ -729,6 +766,7 @@ public class SchematicLoader {
                 }
                 int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, planeWidth, planeHeight);
                 result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, hashPattern(pattern), pattern));
+                usedMarkers.addAll(plane);
                 liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} pattern={}", corner, facing, planeWidth, planeHeight, result.getLast().patternHash());
 
                 // marker plane flat on z axis (north or south)
@@ -752,6 +790,7 @@ public class SchematicLoader {
                 }
                 int[] pattern = buildPatternForFacing(plane, markerBlockTypes, corner, facing, planeWidth, planeHeight);
                 result.add(new ConnectionPoint(corner, facing, planeWidth, planeHeight, hashPattern(pattern), pattern));
+                usedMarkers.addAll(plane);
                 liminalness.LOGGER.info("schematic loader - connection point: {} facing={} w={} h={} pattern={}", corner, facing, planeWidth, planeHeight, result.getLast().patternHash());
 
             } else {
@@ -759,7 +798,7 @@ public class SchematicLoader {
             }
         }
 
-        return result;
+        return new MarkerDetectionResult(result, usedMarkers);
     }
 
     private static int[] buildPatternForFacing(Set<BlockPos> plane, Map<BlockPos, Block> markerBlockTypes, BlockPos corner, Direction facing, int width, int height) {
