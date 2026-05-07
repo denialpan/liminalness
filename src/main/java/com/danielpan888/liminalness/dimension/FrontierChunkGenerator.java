@@ -92,9 +92,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private static final int RECENT_FAMILY_WINDOW = 12;
 
     // default dimension json config
-    public int generationY      = 20;
-    public int minGenerationY   = 0;
-    public int maxGenerationY   = 384;
+    public int playerSpawnGenerationY = 128;
+    public int dimensionMinGenerationY = 0;
+    public int dimensionMaxGenerationY = 384;
     public int radiusHorizontal = 256;
     public int radiusVertical   = 64;
     public int stepsPerTick     = 10;
@@ -166,9 +166,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         candidateIndex.clear();
 
         worldSeed        = seed;
-        generationY      = dimensionConfig.generationY();
-        minGenerationY   = dimensionConfig.minY();
-        maxGenerationY   = dimensionConfig.maxY();
+        playerSpawnGenerationY = dimensionConfig.generationY();
+        dimensionMinGenerationY = dimensionConfig.minY();
+        dimensionMaxGenerationY = dimensionConfig.maxY();
         fillSpaceState   = resolveFillSpace(dimensionConfig.fillSpace());
         radiusHorizontal = dimensionConfig.generationRadiusHorizontal();
         radiusVertical   = dimensionConfig.generationRadiusVertical();
@@ -323,7 +323,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         SchematicLoader.Schematic startSchema = selectStartingSchematic();
         if (startSchema == null) {
-            return new Vec3(0.5, generationY, 0.5);
+            return new Vec3(0.5, playerSpawnGenerationY, 0.5);
         }
 
         BlockPos existingOrigin = findRoomContaining(startCenterX, startCenterZ);
@@ -406,7 +406,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         int[] extents = getExtents(schematic);
         return new BlockPos(
             centerX - (extents[0] / 2),
-            generationY - (extents[1] / 2),
+            playerSpawnGenerationY - (extents[1] / 2),
             centerZ - (extents[2] / 2)
         );
     }
@@ -416,7 +416,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         int[] extents = getExtents(schematic);
         return new Vec3(
             origin.getX() + (extents[0] / 2.0) + 0.5,
-            generationY,
+                playerSpawnGenerationY,
             origin.getZ() + (extents[2] / 2.0) + 0.5
         );
     }
@@ -531,27 +531,27 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             BlockPos candidateOrigin = switch (directionIndex) {
                 case 0 -> new BlockPos(
                     anchorOrigin.getX() + anchorExtents[0] + gap,
-                    generationY - (candidateExtents[1] / 2),
+                    playerSpawnGenerationY - (candidateExtents[1] / 2),
                     anchorOrigin.getZ()
                 );
                 case 1 -> new BlockPos(
                     anchorOrigin.getX() - candidateExtents[0] - gap,
-                    generationY - (candidateExtents[1] / 2),
+                    playerSpawnGenerationY - (candidateExtents[1] / 2),
                     anchorOrigin.getZ()
                 );
                 case 2 -> new BlockPos(
                     anchorOrigin.getX(),
-                    generationY - (candidateExtents[1] / 2),
+                    playerSpawnGenerationY - (candidateExtents[1] / 2),
                     anchorOrigin.getZ() + anchorExtents[2] + gap
                 );
                 default -> new BlockPos(
                     anchorOrigin.getX(),
-                    generationY - (candidateExtents[1] / 2),
+                    playerSpawnGenerationY - (candidateExtents[1] / 2),
                     anchorOrigin.getZ() - candidateExtents[2] - gap
                 );
             };
 
-            if (candidateOrigin.getY() < minGenerationY || candidateOrigin.getY() + candidateExtents[1] > maxGenerationY + 1) {
+            if (candidateOrigin.getY() < dimensionMinGenerationY || candidateOrigin.getY() + candidateExtents[1] > dimensionMaxGenerationY + 1) {
                 continue;
             }
 
@@ -850,7 +850,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 BlockPos candidateOrigin = entry.attachPoint().subtract(matchingConnectionPoint.corner());
 
                 int[] extents = getExtents(candidate);
-                if (candidateOrigin.getY() < minGenerationY || candidateOrigin.getY() + extents[1] > maxGenerationY + 1) continue;
+                if (candidateOrigin.getY() < dimensionMinGenerationY || candidateOrigin.getY() + extents[1] > dimensionMaxGenerationY + 1) continue;
 
                 if (overlapsAny(candidate, candidateOrigin)) continue;
 
@@ -952,7 +952,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         // solid fill debug test
         for (int x = minX; x < maxX; x++)
             for (int z = minZ; z < maxZ; z++)
-                for (int y = minGenerationY; y <= maxGenerationY; y++) {
+                for (int y = dimensionMinGenerationY; y <= dimensionMaxGenerationY; y++) {
                     mutable.set(x, y, z);
                     chunk.setBlockState(mutable, fillSpaceState, false);
                 }
@@ -1266,12 +1266,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public Vec3 getStartingSpawnPosition() {
         BlockPos origin = startingRoomOrigin;
         if (origin == null) {
-            return new Vec3(0.5, generationY, 0.5);
+            return new Vec3(0.5, playerSpawnGenerationY, 0.5);
         }
 
         SchematicLoader.Schematic schematic = roomOrigins.get(origin);
         if (schematic == null) {
-            return new Vec3(origin.getX() + 0.5, generationY, origin.getZ() + 0.5);
+            return new Vec3(origin.getX() + 0.5, playerSpawnGenerationY, origin.getZ() + 0.5);
         }
 
         return getSpawnPositionForRoom(origin, schematic);
@@ -1355,7 +1355,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     @Override
     public int getBaseHeight(int x, int z, Heightmap.Types t,
                              LevelHeightAccessor l, RandomState rs) {
-        return generationY;
+        return playerSpawnGenerationY;
     }
 
     @Override

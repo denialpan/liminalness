@@ -47,9 +47,9 @@ public class DimensionConfigLoader {
     private static DimensionConfig load(InputStream stream, String sourceName, String defaultNamespace, ResourceManager resourceManager) throws Exception {
         JsonObject json = JsonParser.parseReader(new InputStreamReader(stream)).getAsJsonObject();
 
-        int generationY      = json.get("generation_y").getAsInt();
-        int minY             = json.get("min_y").getAsInt();
-        int maxY             = json.get("max_y").getAsInt();
+        int generationY      = json.get("player_spawn_generation_y").getAsInt();
+        int minY             = json.get("dimension_min_y").getAsInt();
+        int maxY             = json.get("dimension_max_y").getAsInt();
         String fillSpace     = json.has("fill_space") ? json.get("fill_space").getAsString() : "minecraft:smooth_sandstone";
         int radiusHorizontal = json.get("generation_radius_horizontal").getAsInt();
         int radiusVertical   = json.get("generation_radius_vertical").getAsInt();
