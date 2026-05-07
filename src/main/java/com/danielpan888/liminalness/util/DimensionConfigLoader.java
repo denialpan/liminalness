@@ -53,8 +53,6 @@ public class DimensionConfigLoader {
         String fillSpace     = json.has("fill_space") ? json.get("fill_space").getAsString() : "minecraft:smooth_sandstone";
         int radiusHorizontal = json.get("generation_radius_horizontal").getAsInt();
         int radiusVertical   = json.get("generation_radius_vertical").getAsInt();
-        int stepsPerTick     = json.get("steps_per_tick").getAsInt();
-        int minRooms         = json.has("min_rooms") ? json.get("min_rooms").getAsInt() : 100;
         int defaultWeight    = json.has("default_weight") ? json.get("default_weight").getAsInt() : 1;
         int defaultWeightPenalty = json.has("default_weight_penalty") ? json.get("default_weight_penalty").getAsInt() : 0;
         boolean defaultMirroredVariants = !json.has("default_mirrored_variants") || json.get("default_mirrored_variants").getAsBoolean();
@@ -124,7 +122,7 @@ public class DimensionConfigLoader {
 
         return new DimensionConfig(
                 generationY, minY, maxY, fillSpace,
-                radiusHorizontal, radiusVertical, stepsPerTick, minRooms, entries
+                radiusHorizontal, radiusVertical, entries
         );
     }
 

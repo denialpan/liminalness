@@ -5,8 +5,6 @@
   "fill_space": "minecraft:smooth_sandstone",
   "generation_radius_horizontal": 64,
   "generation_radius_vertical": 16,
-  "steps_per_tick": 10,
-  "min_rooms": 100,
 
   "default_weight": 50,
   "default_mirrored_variants": true,

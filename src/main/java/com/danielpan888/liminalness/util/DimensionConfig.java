@@ -10,8 +10,6 @@ public record DimensionConfig(
     String fillSpace,
     int generationRadiusHorizontal,
     int generationRadiusVertical,
-    int stepsPerTick,
-    int minRooms,
     List<SchematicEntry> schematics
 ) {
     public record SchematicEntry(

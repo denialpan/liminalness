@@ -88,7 +88,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     protected List<SchematicLoader.Schematic> weightedPool = new ArrayList<>();
     protected List<SchematicLoader.Schematic> spawnPool = new ArrayList<>();
 
-    // TODO: allow config this
+    // TODO: allow global config this
     private static final int RECENT_FAMILY_WINDOW = 12;
 
     // default dimension json config
@@ -97,9 +97,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public int dimensionMaxGenerationY = 384;
     public int radiusHorizontal = 256;
     public int radiusVertical   = 64;
+
+    // TODO: allow global config these two
     public int stepsPerTick     = 10;
     public int minRooms         = 100;
-    public BlockState fillSpaceState = Blocks.SMOOTH_SANDSTONE.defaultBlockState();
+
+    public BlockState fillSpaceState = Blocks.AIR.defaultBlockState();
 
     public FrontierChunkGenerator(BiomeSource biomeSource) {
         super(biomeSource);
@@ -172,8 +175,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         fillSpaceState   = resolveFillSpace(dimensionConfig.fillSpace());
         radiusHorizontal = dimensionConfig.generationRadiusHorizontal();
         radiusVertical   = dimensionConfig.generationRadiusVertical();
-        stepsPerTick     = dimensionConfig.stepsPerTick();
-        minRooms         = dimensionConfig.minRooms();
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
             List<Map.Entry<String, SchematicLoader.Schematic>> variants = SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic(), entry.mirroredVariants());
