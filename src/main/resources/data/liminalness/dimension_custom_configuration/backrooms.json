@@ -11,7 +11,6 @@
   "default_literal_match": true,
   "default_can_connect_itself_vertically": true,
   "default_can_connect_itself_horizontally": true,
-  "default_schematics_dir": "schematics",
   "default_schematic_levels": [1],
   "default_weight_penalty": 0,
 

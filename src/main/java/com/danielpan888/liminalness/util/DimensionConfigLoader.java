@@ -20,6 +20,8 @@ import java.util.Set;
 
 public class DimensionConfigLoader {
 
+    private static final String DEFAULT_SCHEMATICS_DIR = "schematics";
+
     private record SchematicSettings(
         int weight,
         boolean mirroredVariants,
@@ -60,11 +62,10 @@ public class DimensionConfigLoader {
         boolean defaultCanConnectItselfVertically = !json.has("default_can_connect_itself_vertically") || json.get("default_can_connect_itself_vertically").getAsBoolean();
         boolean defaultCanConnectItselfHorizontally = !json.has("default_can_connect_itself_horizontally") || json.get("default_can_connect_itself_horizontally").getAsBoolean();
         Set<Integer> defaultSchematicLevels = json.has("default_schematic_levels") ? parseLevels(json.getAsJsonArray("default_schematic_levels")) : Set.of(1);
-        String defaultSchematicsDir = json.has("default_schematics_dir") ? json.get("default_schematics_dir").getAsString() : "schematics";
 
         JsonArray schematicsJson = json.has("schematics") ? json.getAsJsonArray("schematics") : new JsonArray();
         Map<String, SchematicSettings> schematicSettings = discoverSchematics(
-            defaultSchematicsDir,
+            DEFAULT_SCHEMATICS_DIR,
             defaultNamespace,
             resourceManager,
             defaultWeight,
@@ -78,7 +79,7 @@ public class DimensionConfigLoader {
 
         for (var elem : schematicsJson) {
             JsonObject obj = elem.getAsJsonObject();
-            String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), defaultSchematicsDir);
+            String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), DEFAULT_SCHEMATICS_DIR);
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
             int weightPenalty = obj.has("weight_penalty") ? obj.get("weight_penalty").getAsInt() : defaultWeightPenalty;
             boolean mirroredVariants = obj.has("mirrored_variants") ? obj.get("mirrored_variants").getAsBoolean() : defaultMirroredVariants;
