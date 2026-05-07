@@ -216,14 +216,6 @@ public class SchematicLoader {
         Set<BlockPos> markers = markerDetection.usedMarkers();
 
         Map<BlockPos, BlockState> blocks = new HashMap<>(normalizedSolidBlocks);
-        for (BlockPos candidateMarker : normalizedMarkerCandidates) {
-            if (!markers.contains(candidateMarker)) {
-                Block decorativeMarker = normalizedMarkerBlockTypes.get(candidateMarker);
-                if (decorativeMarker != null) {
-                    blocks.put(candidateMarker, decorativeMarker.defaultBlockState());
-                }
-            }
-        }
 
         Map<BlockPos, BlockState> finalBlocks = new HashMap<>();
         Set<BlockPos> portalPositions = new HashSet<>();
@@ -279,7 +271,7 @@ public class SchematicLoader {
             BlockPos pos = entry.getKey();
             BlockState state = entry.getValue();
 
-            if (markers.contains(pos) || isSchematicCorner(pos, width, height, length)) {
+            if (markers.contains(pos)) {
                 finalBlocks.put(pos, Blocks.AIR.defaultBlockState());
             } else if (state.getBlock() == Blocks.END_PORTAL_FRAME) {
                 portalPositions.add(pos);
@@ -350,13 +342,6 @@ public class SchematicLoader {
         return pos.getX() == 0 || pos.getX() == width - 1
             || pos.getY() == 0 || pos.getY() == height - 1
             || pos.getZ() == 0 || pos.getZ() == length - 1;
-    }
-
-    private static boolean isSchematicCorner(BlockPos pos, int width, int height, int length) {
-        boolean edgeX = pos.getX() == 0 || pos.getX() == width - 1;
-        boolean edgeY = pos.getY() == 0 || pos.getY() == height - 1;
-        boolean edgeZ = pos.getZ() == 0 || pos.getZ() == length - 1;
-        return edgeX && edgeY && edgeZ;
     }
 
     private static CompoundTag extractBlockEntityPayload(CompoundTag blockEntityTag) {
