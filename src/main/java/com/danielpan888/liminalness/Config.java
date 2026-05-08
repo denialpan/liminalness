@@ -1,5 +1,7 @@
 package com.danielpan888.liminalness;
 
+import java.util.List;
+
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 public class Config {
@@ -28,6 +30,31 @@ public class Config {
     public static final ModConfigSpec.BooleanValue LIMINALNESS_ILLEGAL_ENCHANTMENTS = BUILDER
             .comment("random chest loot can spawn generate illegal enchantment combinations.")
             .define("illegal_enchantments", true);
+
+    public static final ModConfigSpec.IntValue LIMINALNESS_CHEST_UNIQUE_ITEMS = BUILDER
+            .comment("Number of unique item stacks that can spawn in a generated chest.")
+            .defineInRange("chest_unique_items", 12, 1, 27);
+
+    public static final ModConfigSpec.IntValue LIMINALNESS_CHEST_ITEM_COUNT = BUILDER
+            .comment("Maximum count rolled for each generated chest item stack.")
+            .defineInRange("chest_item_count", 20, 1, 64);
+
+    public static final ModConfigSpec.IntValue LIMINALNESS_CHEST_ENCHANTMENT_COUNT = BUILDER
+            .comment("Maximum number of enchantments that can be applied to one generated item stack.")
+            .defineInRange("chest_enchantment_count", 5, 1, 40);
+
+    public static final ModConfigSpec.IntValue LIMINALNESS_CHEST_ENCHANTMENT_ROLL_CHANCE = BUILDER
+            .comment("Percent chance that a generated item stack will roll enchantments.")
+            .defineInRange("chest_enchantment_roll_chance", 20, 1, 100);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LIMINALNESS_BLACKLISTED_MOD_IDS = BUILDER
+            .comment("Mod ids whose items should be excluded from generated chest loot.")
+            .defineListAllowEmpty(
+                    "blacklisted_mod_ids",
+                    List.of(),
+                    () -> "",
+                    value -> value instanceof String s && !s.isBlank()
+            );
 
 
 

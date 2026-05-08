@@ -8,7 +8,12 @@
   "liminalness.configuration.minimum_rooms": "Minimum initial rooms",
   "liminalness.configuration.steps_per_tick": "Room steps per tick",
   "liminalness.configuration.teleport_range": "Teleport range",
-  "liminalness.configuration.teleport_range": "Teleport range",
-  "liminalness.configuration.illegal_enchantments": "Illegal Enchantments"
+
+  "liminalness.configuration.enable_enchantments": "Chest loot enchantments",
+  "liminalness.configuration.illegal_enchantments": "Chest loot Illegal enchantments",
+  "liminalness.configuration.chest_unique_items": "Chest loot # unique items",
+  "liminalness.configuration.chest_item_count": "Chest loot # of item per unique",
+  "liminalness.configuration.chest_enchantment_count": "Chest loot # of enchantments",
+  "liminalness.configuration.chest_enchantment_roll_chance": "Chest loot enchantment roll chance"
 
 }

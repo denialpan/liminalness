@@ -6,6 +6,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -14,8 +15,10 @@ import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 public class ChestLootHandler {
 
@@ -40,10 +43,13 @@ public class ChestLootHandler {
     public static List<Item> getItemPool() {
         if (cachedItemPool != null) return cachedItemPool;
 
+        Set<String> blacklistedModIds = new HashSet<>(Config.LIMINALNESS_BLACKLISTED_MOD_IDS.get());
         cachedItemPool = new ArrayList<>();
         for (Item item : BuiltInRegistries.ITEM) {
             if (BLACKLIST.contains(item)) continue;
             if (item.getDefaultInstance().isEmpty()) continue;
+            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(item);
+            if (blacklistedModIds.contains(itemId.getNamespace())) continue;
             cachedItemPool.add(item);
         }
 
@@ -70,23 +76,28 @@ public class ChestLootHandler {
         hash  = Long.rotateLeft(hash, 31) * 0x94D049BB133111EBL;
         Random rand = new Random(hash);
 
-        int itemCount = 5 + rand.nextInt(16);
+        int maxUniqueItems = Config.LIMINALNESS_CHEST_UNIQUE_ITEMS.get();
+        int itemCount = 1 + rand.nextInt(maxUniqueItems);
         List<Integer> slots = new ArrayList<>();
         for (int i = 0; i < 27; i++) slots.add(i);
 
         List<Holder<Enchantment>> enchantmentPool = getEnchantmentPool(level);
         boolean enableEnchantments = Config.LIMINALNESS_ENABLE_ENCHANTMENTS.get();
         boolean illegalEnchantments = Config.LIMINALNESS_ILLEGAL_ENCHANTMENTS.get();
+        int maxItemCount = Config.LIMINALNESS_CHEST_ITEM_COUNT.get();
+        int maxEnchantmentCount = Config.LIMINALNESS_CHEST_ENCHANTMENT_COUNT.get();
+        float enchantmentRollChance = Config.LIMINALNESS_CHEST_ENCHANTMENT_ROLL_CHANCE.get() / 100.0f;
 
         for (int i = 0; i < itemCount && !slots.isEmpty(); i++) {
             int slotIndex = rand.nextInt(slots.size());
             int slot = slots.remove(slotIndex);
 
             Item item = pool.get(rand.nextInt(pool.size()));
-            int count = 8 + rand.nextInt(Math.min(item.getDefaultMaxStackSize(), 20));
+            int stackCap = Math.min(item.getDefaultMaxStackSize(), maxItemCount);
+            int count = 1 + rand.nextInt(stackCap);
             ItemStack stack = new ItemStack(item, count);
 
-            if (enableEnchantments && !enchantmentPool.isEmpty() && rand.nextFloat() < 0.20f) {
+            if (enableEnchantments && !enchantmentPool.isEmpty() && rand.nextFloat() < enchantmentRollChance) {
                 List<Holder<Enchantment>> applicableEnchantments = !illegalEnchantments ? getValidEnchantmentsForStack(stack, enchantmentPool) : enchantmentPool;
 
                 if (applicableEnchantments.isEmpty()) {
@@ -94,7 +105,7 @@ public class ChestLootHandler {
                     continue;
                 }
 
-                int enchantCount = 1 + rand.nextInt(5);
+                int enchantCount = 1 + rand.nextInt(maxEnchantmentCount);
                 for (int e = 0; e < enchantCount; e++) {
                     Holder<Enchantment> enchantment = applicableEnchantments.get(rand.nextInt(applicableEnchantments.size()));
                     int maxLevel = enchantment.value().getMaxLevel();
