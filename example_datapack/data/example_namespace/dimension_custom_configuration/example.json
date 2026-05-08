@@ -1,0 +1,10 @@
+{
+  "player_spawn_generation_y": 128,
+  "dimension_min_y": 0,
+  "dimension_max_y": 384,
+  "fill_space": "minecraft:air",
+  "generation_radius_horizontal": 64,
+  "generation_radius_vertical": 16,
+  "default_weight": 2,
+  "schematics": []
+}

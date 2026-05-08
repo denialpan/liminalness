@@ -28,7 +28,7 @@ public class Config {
             .define("enable_enchantments", true);
 
     public static final ModConfigSpec.BooleanValue LIMINALNESS_ILLEGAL_ENCHANTMENTS = BUILDER
-            .comment("random chest loot can spawn generate illegal enchantment combinations.")
+            .comment("Random chest loot can spawn generate illegal enchantment combinations.")
             .define("illegal_enchantments", true);
 
     public static final ModConfigSpec.IntValue LIMINALNESS_CHEST_UNIQUE_ITEMS = BUILDER
