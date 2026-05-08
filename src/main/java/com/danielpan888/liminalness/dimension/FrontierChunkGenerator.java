@@ -226,7 +226,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                     continue;
                 }
 
-                if (entry.weight() == 1) {
+                if (entry.initialSpawn()) {
                     spawnPool.add(schematic);
                 }
 

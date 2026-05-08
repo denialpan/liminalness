@@ -15,6 +15,7 @@ public record DimensionConfig(
     public record SchematicEntry(
         String path,
         int weight,
+        boolean initialSpawn,
         boolean mirroredVariants,
         boolean literalMatch,
         boolean canConnectItselfVertically,

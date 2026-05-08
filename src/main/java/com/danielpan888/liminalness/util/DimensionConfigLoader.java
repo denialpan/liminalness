@@ -24,6 +24,7 @@ public class DimensionConfigLoader {
 
     private record SchematicSettings(
         int weight,
+        boolean initialSpawn,
         boolean mirroredVariants,
         boolean literalMatch,
         boolean canConnectItselfVertically,
@@ -57,6 +58,7 @@ public class DimensionConfigLoader {
         int radiusVertical   = json.get("generation_radius_vertical").getAsInt();
 
         int defaultWeight    = json.has("default_weight") ? json.get("default_weight").getAsInt() : 50;
+        boolean defaultInitialSpawn = json.has("default_initial_spawn") && json.get("default_initial_spawn").getAsBoolean();
         int defaultWeightPenalty = json.has("default_weight_penalty") ? json.get("default_weight_penalty").getAsInt() : 0;
         boolean defaultMirroredVariants = !json.has("default_mirrored_variants") || json.get("default_mirrored_variants").getAsBoolean();
         boolean defaultLiteralMatch = !json.has("default_literal_match") || json.get("default_literal_match").getAsBoolean();
@@ -70,6 +72,7 @@ public class DimensionConfigLoader {
             defaultNamespace,
             resourceManager,
             defaultWeight,
+            defaultInitialSpawn,
             defaultWeightPenalty,
             defaultMirroredVariants,
             defaultLiteralMatch,
@@ -82,6 +85,7 @@ public class DimensionConfigLoader {
             JsonObject obj = elem.getAsJsonObject();
             String path = obj.has("path") ? obj.get("path").getAsString() : resolveSchematicPath(obj.get("name").getAsString(), DEFAULT_SCHEMATICS_DIR);
             int weight = obj.has("weight") ? obj.get("weight").getAsInt() : defaultWeight;
+            boolean initialSpawn = obj.has("initial_spawn") ? obj.get("initial_spawn").getAsBoolean() : defaultInitialSpawn;
             int weightPenalty = obj.has("weight_penalty") ? obj.get("weight_penalty").getAsInt() : defaultWeightPenalty;
             boolean mirroredVariants = obj.has("mirrored_variants") ? obj.get("mirrored_variants").getAsBoolean() : defaultMirroredVariants;
             boolean literalMatch = obj.has("literal_match") ? obj.get("literal_match").getAsBoolean() : defaultLiteralMatch;
@@ -90,7 +94,7 @@ public class DimensionConfigLoader {
             Set<Integer> levels = obj.has("levels") ? parseLevels(obj.getAsJsonArray("levels")) : obj.has("level")
                     ? parseLevels(obj.getAsJsonArray("level")) : obj.has("schematic_level")
                     ? parseLevels(obj.getAsJsonArray("schematic_level")) : defaultSchematicLevels;
-            schematicSettings.put(path, new SchematicSettings(weight, mirroredVariants, literalMatch, canConnectItselfVertically, canConnectItselfHorizontally, weightPenalty, levels));
+            schematicSettings.put(path, new SchematicSettings(weight, initialSpawn, mirroredVariants, literalMatch, canConnectItselfVertically, canConnectItselfHorizontally, weightPenalty, levels));
         }
 
         List<DimensionConfig.SchematicEntry> entries = new ArrayList<>();
@@ -105,11 +109,12 @@ public class DimensionConfigLoader {
                 }
 
                 SchematicLoader.Schematic schematic = SchematicLoader.load(schematicStream);
-                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.mirroredVariants(), settings.literalMatch(), settings.canConnectItselfVertically(), settings.canConnectItselfHorizontally(), settings.weightPenalty(), settings.levels(), schematic));
+                entries.add(new DimensionConfig.SchematicEntry(path, settings.weight(), settings.initialSpawn(), settings.mirroredVariants(), settings.literalMatch(), settings.canConnectItselfVertically(), settings.canConnectItselfHorizontally(), settings.weightPenalty(), settings.levels(), schematic));
                 liminalness.LOGGER.info(
-                    "dimension config - loaded schematic: {} weight={} mirrored_variants={} literal_match={} weight_penalty={} can_connect_itself_vertically={} can_connect_itself_horizontally={} levels={}",
+                    "dimension config - loaded schematic: {} weight={} initial_spawn={} mirrored_variants={} literal_match={} weight_penalty={} can_connect_itself_vertically={} can_connect_itself_horizontally={} levels={}",
                     path,
                     settings.weight(),
+                    settings.initialSpawn(),
                     settings.mirroredVariants(),
                     settings.literalMatch(),
                     settings.weightPenalty(),
@@ -157,6 +162,7 @@ public class DimensionConfigLoader {
         String defaultNamespace,
         ResourceManager resourceManager,
         int defaultWeight,
+        boolean defaultInitialSpawn,
         int defaultWeightPenalty,
         boolean defaultMirroredVariants,
         boolean defaultLiteralMatch,
@@ -178,7 +184,7 @@ public class DimensionConfigLoader {
             .sorted()
             .forEach(path -> discovered.put(
                 path.startsWith(prefix) ? path : prefix + path,
-                new SchematicSettings(defaultWeight, defaultMirroredVariants, defaultLiteralMatch, defaultCanConnectItselfVertically, defaultCanConnectItselfHorizontally, defaultWeightPenalty, defaultLevels)
+                new SchematicSettings(defaultWeight, defaultInitialSpawn, defaultMirroredVariants, defaultLiteralMatch, defaultCanConnectItselfVertically, defaultCanConnectItselfHorizontally, defaultWeightPenalty, defaultLevels)
             ));
 
         return discovered;
