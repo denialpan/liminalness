@@ -7,5 +7,8 @@
   "liminalness.configuration.recency_window": "Recency window generation",
   "liminalness.configuration.minimum_rooms": "Minimum initial rooms",
   "liminalness.configuration.steps_per_tick": "Room steps per tick",
-  "liminalness.configuration.teleport_range": "Teleport range"
+  "liminalness.configuration.teleport_range": "Teleport range",
+  "liminalness.configuration.teleport_range": "Teleport range",
+  "liminalness.configuration.illegal_enchantments": "Illegal Enchantments"
+
 }

@@ -21,6 +21,14 @@ public class Config {
             .comment("Max radius of blocks from 0, 0 that a player can end up on random teleportation.")
             .defineInRange("teleport_range", 2560000, 2000, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.BooleanValue LIMINALNESS_ENABLE_ENCHANTMENTS = BUILDER
+            .comment("Random chest loot can spawn with enchantments.")
+            .define("enable_enchantments", true);
+
+    public static final ModConfigSpec.BooleanValue LIMINALNESS_ILLEGAL_ENCHANTMENTS = BUILDER
+            .comment("random chest loot can spawn generate illegal enchantment combinations.")
+            .define("illegal_enchantments", true);
+
 
 
     static final ModConfigSpec SPEC = BUILDER.build();

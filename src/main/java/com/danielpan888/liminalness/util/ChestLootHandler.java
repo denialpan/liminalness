@@ -1,5 +1,6 @@
 package com.danielpan888.liminalness.util;
 
+import com.danielpan888.liminalness.Config;
 import com.danielpan888.liminalness.liminalness;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -74,6 +75,8 @@ public class ChestLootHandler {
         for (int i = 0; i < 27; i++) slots.add(i);
 
         List<Holder<Enchantment>> enchantmentPool = getEnchantmentPool(level);
+        boolean enableEnchantments = Config.LIMINALNESS_ENABLE_ENCHANTMENTS.get();
+        boolean illegalEnchantments = Config.LIMINALNESS_ILLEGAL_ENCHANTMENTS.get();
 
         for (int i = 0; i < itemCount && !slots.isEmpty(); i++) {
             int slotIndex = rand.nextInt(slots.size());
@@ -83,10 +86,17 @@ public class ChestLootHandler {
             int count = 8 + rand.nextInt(Math.min(item.getDefaultMaxStackSize(), 20));
             ItemStack stack = new ItemStack(item, count);
 
-            if (!enchantmentPool.isEmpty() && rand.nextFloat() < 0.20f) {
+            if (enableEnchantments && !enchantmentPool.isEmpty() && rand.nextFloat() < 0.20f) {
+                List<Holder<Enchantment>> applicableEnchantments = !illegalEnchantments ? getValidEnchantmentsForStack(stack, enchantmentPool) : enchantmentPool;
+
+                if (applicableEnchantments.isEmpty()) {
+                    chest.setItem(slot, stack);
+                    continue;
+                }
+
                 int enchantCount = 1 + rand.nextInt(5);
                 for (int e = 0; e < enchantCount; e++) {
-                    Holder<Enchantment> enchantment = enchantmentPool.get(rand.nextInt(enchantmentPool.size()));
+                    Holder<Enchantment> enchantment = applicableEnchantments.get(rand.nextInt(applicableEnchantments.size()));
                     int maxLevel = enchantment.value().getMaxLevel();
                     int enchantmentLevel = 1 + rand.nextInt(maxLevel);
                     stack.enchant(enchantment, enchantmentLevel);
@@ -104,6 +114,16 @@ public class ChestLootHandler {
         var registry = level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
         registry.listElements().forEach(pool::add);
         return pool;
+    }
+
+    private static List<Holder<Enchantment>> getValidEnchantmentsForStack(ItemStack stack, List<Holder<Enchantment>> enchantmentPool) {
+        List<Holder<Enchantment>> valid = new ArrayList<>();
+        for (Holder<Enchantment> enchantment : enchantmentPool) {
+            if (enchantment.value().canEnchant(stack)) {
+                valid.add(enchantment);
+            }
+        }
+        return valid;
     }
 
 }
