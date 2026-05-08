@@ -1251,13 +1251,13 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         ResourceLocation blockId = ResourceLocation.tryParse(fillSpace);
         if (blockId == null) {
             liminalness.LOGGER.warn("frontier generator - invalid fill_space '{}' for {}, defaulting to minecraft:smooth_sandstone", fillSpace, getDimensionId());
-            return Blocks.SMOOTH_SANDSTONE.defaultBlockState();
+            return Blocks.AIR.defaultBlockState();
         }
 
         Block block = BuiltInRegistries.BLOCK.get(blockId);
         if (block == Blocks.AIR && !blockId.equals(BuiltInRegistries.BLOCK.getKey(Blocks.AIR))) {
             liminalness.LOGGER.warn("frontier generator - unknown fill_space '{}' for {}, defaulting to minecraft:smooth_sandstone", fillSpace, getDimensionId());
-            return Blocks.SMOOTH_SANDSTONE.defaultBlockState();
+            return Blocks.AIR.defaultBlockState();
         }
 
         return block.defaultBlockState();
