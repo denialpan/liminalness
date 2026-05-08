@@ -1,42 +1,27 @@
 package com.danielpan888.liminalness;
 
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
-
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Item;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-// An example config class. This is not required, but it's a good idea to have one to keep your config organized.
-// Demonstrates how to use Neo's config APIs
 public class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    public static final ModConfigSpec.BooleanValue LOG_DIRT_BLOCK = BUILDER
-            .comment("Whether to log the dirt block on common setup")
-            .define("logDirtBlock", true);
+    public static final ModConfigSpec.IntValue LIMINALNESS_RECENCY_WINDOW = BUILDER
+            .comment("Recency window for schematic history to affect schematic weight penalties. This helps to prevent one schematic to dominate generation.")
+            .defineInRange("recency_window", 10, 0, Integer.MAX_VALUE);
 
-    public static final ModConfigSpec.IntValue MAGIC_NUMBER = BUILDER
-            .comment("A magic number")
-            .defineInRange("magicNumber", 42, 0, Integer.MAX_VALUE);
+    public static final ModConfigSpec.IntValue LIMINALNESS_MINIMUM_ROOMS = BUILDER
+            .comment("Minimum amount of rooms expected. This aggressively lets the initial rooms have many connections to expand upon.")
+            .defineInRange("minimum_rooms", 500, 10, Integer.MAX_VALUE);
 
-    public static final ModConfigSpec.ConfigValue<String> MAGIC_NUMBER_INTRODUCTION = BUILDER
-            .comment("What you want the introduction message to be for the magic number")
-            .define("magicNumberIntroduction", "The magic number is... ");
+    public static final ModConfigSpec.IntValue LIMINALNESS_STEPS_PER_TICK = BUILDER
+            .comment("Number of rooms to generate per tick. Increase this value to allow the mod to generate the number of rooms faster, reduce to prevent CPU load.")
+            .defineInRange("steps_per_tick", 10, 1, Integer.MAX_VALUE);
 
-    // a list of strings that are treated as resource locations for items
-    public static final ModConfigSpec.ConfigValue<List<? extends String>> ITEM_STRINGS = BUILDER
-            .comment("A list of items to log on common setup.")
-            .defineListAllowEmpty("items", List.of("minecraft:iron_ingot"), () -> "", Config::validateItemName);
+    public static final ModConfigSpec.IntValue LIMINALNESS_TELEPORT_RANGE = BUILDER
+            .comment("Max radius of blocks from 0, 0 that a player can end up on random teleportation.")
+            .defineInRange("teleport_range", 2560000, 2000, Integer.MAX_VALUE);
+
+
 
     static final ModConfigSpec SPEC = BUILDER.build();
-
-    private static boolean validateItemName(final Object obj) {
-        return obj instanceof String itemName && BuiltInRegistries.ITEM.containsKey(ResourceLocation.parse(itemName));
-    }
 }

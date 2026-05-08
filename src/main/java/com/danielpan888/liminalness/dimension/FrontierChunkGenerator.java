@@ -1,5 +1,6 @@
 package com.danielpan888.liminalness.dimension;
 
+import com.danielpan888.liminalness.Config;
 import com.danielpan888.liminalness.liminalness;
 import com.danielpan888.liminalness.util.ChestLootHandler;
 import com.danielpan888.liminalness.util.DimensionConfig;
@@ -88,24 +89,40 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     protected List<SchematicLoader.Schematic> weightedPool = new ArrayList<>();
     protected List<SchematicLoader.Schematic> spawnPool = new ArrayList<>();
 
-    // TODO: allow global config this
-    private static final int RECENT_FAMILY_WINDOW = 12;
+    private static final int DEFAULT_RECENT_FAMILY_WINDOW = 10;
+    private static final int DEFAULT_MINIMUM_ROOMS = 500;
+    private static final int DEFAULT_STEPS_PER_TICK = 10;
 
     // default dimension json config
     public int playerSpawnGenerationY = 128;
     public int dimensionMinGenerationY = 0;
     public int dimensionMaxGenerationY = 384;
     public int radiusHorizontal = 256;
-    public int radiusVertical   = 64;
+    public int radiusVertical = 64;
 
-    // TODO: allow global config these two
-    public int stepsPerTick     = 10;
-    public int minRooms         = 100;
+    public int minRooms = DEFAULT_MINIMUM_ROOMS;
+    public int stepsPerTick = DEFAULT_STEPS_PER_TICK;
 
     public BlockState fillSpaceState = Blocks.AIR.defaultBlockState();
 
     public FrontierChunkGenerator(BiomeSource biomeSource) {
         super(biomeSource);
+    }
+
+    private static int recencyWindow() {
+        return Config.LIMINALNESS_RECENCY_WINDOW.get();
+    }
+
+    private static int configuredMinimumRooms() {
+        return Config.LIMINALNESS_MINIMUM_ROOMS.get();
+    }
+
+    private static int configuredStepsPerTick() {
+        return Config.LIMINALNESS_STEPS_PER_TICK.get();
+    }
+
+    private static int configuredTeleportRange() {
+        return Config.LIMINALNESS_TELEPORT_RANGE.get();
     }
 
     public record FrontierEntry(
@@ -175,6 +192,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         fillSpaceState   = resolveFillSpace(dimensionConfig.fillSpace());
         radiusHorizontal = dimensionConfig.generationRadiusHorizontal();
         radiusVertical   = dimensionConfig.generationRadiusVertical();
+        minRooms         = configuredMinimumRooms();
+        stepsPerTick     = configuredStepsPerTick();
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
             List<Map.Entry<String, SchematicLoader.Schematic>> variants = SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic(), entry.mirroredVariants());
@@ -297,8 +316,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         long positionHash = hash;
 
-        // TODO: allow config this value maybe
-        int spawnRange = Math.max(radiusHorizontal, 2560000);
+        int spawnRange = Math.max(radiusHorizontal, configuredTeleportRange());
 
         positionHash = Long.rotateLeft(positionHash, 17) * 0x94D049BB133111EBL;
         int startCenterX = randomInRange(positionHash, -spawnRange, spawnRange);
@@ -1204,7 +1222,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         recentPlacedFamilies.addLast(family);
         recentFamilyCounts.merge(family, 1, Integer::sum);
 
-        while (recentPlacedFamilies.size() > RECENT_FAMILY_WINDOW) {
+        while (recentPlacedFamilies.size() > recencyWindow()) {
             String expired = recentPlacedFamilies.removeFirst();
             recentFamilyCounts.computeIfPresent(expired, (ignored, count) -> count > 1 ? count - 1 : null);
         }

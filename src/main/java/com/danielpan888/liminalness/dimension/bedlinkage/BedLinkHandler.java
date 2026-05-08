@@ -1,5 +1,6 @@
 package com.danielpan888.liminalness.dimension.bedlinkage;
 
+import com.danielpan888.liminalness.Config;
 import com.danielpan888.liminalness.dimension.DimensionManager;
 import com.danielpan888.liminalness.dimension.FrontierChunkGenerator;
 import net.minecraft.core.BlockPos;
@@ -70,7 +71,7 @@ public final class BedLinkHandler {
         }
 
         long locationHash = mixBedHash(worldSeed, sourceDimension, bedPos, targetDimension);
-        int spawnRange = Math.max(generator.radiusHorizontal, 2560000);
+        int spawnRange = Math.max(generator.radiusHorizontal, Config.LIMINALNESS_TELEPORT_RANGE.get());
 
         locationHash = Long.rotateLeft(locationHash, 17) * MIX_CONSTANT;
         int startCenterX = randomInRange(locationHash, -spawnRange, spawnRange);

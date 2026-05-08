@@ -1,13 +1,11 @@
 {
-  "itemGroup.liminalness": "Example Mod Tab",
-  "block.liminalness.example_block": "Example Block",
-  "item.liminalness.example_item": "Example Item",
 
   "liminalness.configuration.title": "liminalness Configs",
   "liminalness.configuration.section.liminalness.common.toml": "liminalness Configs",
   "liminalness.configuration.section.liminalness.common.toml.title": "liminalness Configs",
-  "liminalness.configuration.items": "Item List",
-  "liminalness.configuration.logDirtBlock": "Log Dirt Block",
-  "liminalness.configuration.magicNumberIntroduction": "Magic Number Text",
-  "liminalness.configuration.magicNumber": "Magic Number"
+
+  "liminalness.configuration.recency_window": "Recency window generation",
+  "liminalness.configuration.minimum_rooms": "Minimum initial rooms",
+  "liminalness.configuration.steps_per_tick": "Room steps per tick",
+  "liminalness.configuration.teleport_range": "Teleport range"
 }
