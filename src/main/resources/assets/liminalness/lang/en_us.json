@@ -16,5 +16,5 @@
   "liminalness.configuration.chest_enchantment_count": "Chest loot # of enchantments",
   "liminalness.configuration.chest_enchantment_roll_chance": "Chest loot enchantment roll chance",
 
-  "liminalness.configuration.blacklisted_mod_ids": "Chest look blacklist modids"
+  "liminalness.configuration.blacklisted_mod_ids": "Chest loot blacklist modids"
 }
