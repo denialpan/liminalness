@@ -25,6 +25,14 @@
     },
 
     {
+      "name": "ddd_backrooms_level_1_hall_random_portal.schem",
+      "weight": 5,
+      "can_connect_itself_vertically": false,
+      "can_connect_itself_horizontally": false,
+      "levels": [1]
+    },
+
+    {
       "name": "ddd_backrooms_level_1_hall_dirt_exhibit_1.schem",
       "weight": 33,
       "can_connect_itself_vertically": false,

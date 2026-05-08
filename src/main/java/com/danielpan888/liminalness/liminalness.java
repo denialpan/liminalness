@@ -245,7 +245,7 @@ public class liminalness {
                     portalPos.getX() + 0.5,
                     portalPos.getY() + 0.5,
                     portalPos.getZ() + 0.5,
-                    4,
+                    1,
                     0.3,
                     0.3,
                     0.3,
