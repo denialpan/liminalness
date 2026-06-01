@@ -1,10 +1,3 @@
-# internal notes
-liminalness.java -> dimensionmanager.java -> frontierchunkgenerator = frontierSavedData -> specific generators
-
-## current limitations
-
-- ~~schematics with high number of markers (possible fix future?)~~ fixed
-
 Installation information
 =======
 
