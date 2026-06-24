@@ -71,6 +71,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Set<Long> stalePatchedChunks = ConcurrentHashMap.newKeySet();
     private final ArrayDeque<Long> staleChunkQueue = new ArrayDeque<>();
     private final Set<Long> queuedStaleChunks = ConcurrentHashMap.newKeySet();
+    // Only these room/chunk pairs are eligible for live repair. Existing committed
+    // chunks are left alone so later generation cannot overwrite player edits.
+    private final Map<Long, Set<BlockPos>> pendingRoomChunks = new ConcurrentHashMap<>();
 
     // lookup table filtering schematics based on connection points available
     private final Map<SchematicLoader.Schematic, String> schematicPaths = new HashMap<>();
@@ -182,6 +185,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.consumedChests.clear();
         this.staleChunkQueue.clear();
         this.queuedStaleChunks.clear();
+        this.pendingRoomChunks.clear();
 
         candidateIndex.clear();
 
@@ -292,12 +296,51 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         stalePatchedChunks.clear();
         staleChunkQueue.clear();
         queuedStaleChunks.clear();
+        pendingRoomChunks.clear();
+        pendingChunks.clear();
     }
 
     public void markChunkStale(long chunkKey) {
         if (stalePatchedChunks.add(chunkKey) && queuedStaleChunks.add(chunkKey)) {
             staleChunkQueue.addLast(chunkKey);
         }
+    }
+
+    /** Queues only the unresolved parts of a restored room for chunk repair. */
+    public void queueUncommittedRoomChunks(BlockPos origin, SchematicLoader.Schematic schematic) {
+        int[] extents = getExtents(schematic);
+        int minChunkX = origin.getX() >> 4;
+        int maxChunkX = (origin.getX() + extents[0] - 1) >> 4;
+        int minChunkZ = origin.getZ() >> 4;
+        int maxChunkZ = (origin.getZ() + extents[2] - 1) >> 4;
+
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                long ck = chunkKey(chunkX, chunkZ);
+                if (!committedChunks.contains(ck)) {
+                    queueRoomChunk(origin, ck);
+                }
+            }
+        }
+    }
+
+    private void queueRoomChunk(BlockPos origin, long chunkKey) {
+        pendingRoomChunks
+            .computeIfAbsent(chunkKey, ignored -> ConcurrentHashMap.newKeySet())
+            .add(origin.immutable());
+        committedChunks.remove(chunkKey);
+        pendingChunks.add(chunkKey);
+        markChunkStale(chunkKey);
+    }
+
+    public boolean hasPendingRoomChunk(long chunkKey) {
+        Set<BlockPos> origins = pendingRoomChunks.get(chunkKey);
+        return origins != null && !origins.isEmpty();
+    }
+
+    /** Applies only room data that was queued for this loaded chunk. */
+    public boolean repairPendingChunk(int chunkX, int chunkZ) {
+        return patchChunk(chunkX, chunkZ);
     }
 
     // --- schematic selection ---
@@ -708,29 +751,26 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     // revisit chunks that were generated too early
     private boolean patchChunk(int chunkX, int chunkZ) {
-        int minX = chunkX << 4, maxX = minX + 16;
-        int minZ = chunkZ << 4, maxZ = minZ + 16;
+        long key = chunkKey(chunkX, chunkZ);
+        Set<BlockPos> origins = pendingRoomChunks.get(key);
+        if (origins == null || origins.isEmpty()) {
+            return true;
+        }
 
-        boolean[] allResolved = {true};
-
-        spatialIndex.anyRoomInChunk(minX, maxX, minZ, maxZ, origin -> {
+        boolean allResolved = true;
+        for (BlockPos origin : List.copyOf(origins)) {
             SchematicLoader.Schematic schematic = roomOrigins.get(origin);
             if (schematic == null) {
-                allResolved[0] = false;
-                return false;
+                allResolved = false;
+                continue;
             }
 
             int relativeChunkX = chunkX - (origin.getX() >> 4);
             int relativeChunkZ = chunkZ - (origin.getZ() >> 4);
-            List<ChunkBlockPlacement> placements = getChunkPlacements(schematic, relativeChunkX, relativeChunkZ);
-            if (placements.isEmpty()) {
-                return false;
-            }
-
-            for (ChunkBlockPlacement placement : placements) {
+            for (ChunkBlockPlacement placement : getChunkPlacements(schematic, relativeChunkX, relativeChunkZ)) {
                 BlockPos world = origin.offset(placement.localPos());
                 if (!serverLevel.isLoaded(world)) {
-                    allResolved[0] = false;
+                    allResolved = false;
                     continue;
                 }
                 serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
@@ -738,10 +778,12 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                     scheduleChestFill(world.immutable(), 0);
                 }
             }
-            return false;
-        });
+        }
 
-        return allResolved[0];
+        if (allResolved) {
+            pendingRoomChunks.remove(key);
+        }
+        return allResolved;
     }
 
     private List<ChunkBlockPlacement> getChunkPlacements(SchematicLoader.Schematic schematic, int relativeChunkX, int relativeChunkZ) {
@@ -998,6 +1040,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         long ck = chunkKey(chunk.getPos().x, chunk.getPos().z);
         if (allResolved[0]) {
             committedChunks.add(ck);
+            pendingChunks.remove(ck);
+            pendingRoomChunks.remove(ck);
+            stalePatchedChunks.remove(ck);
         } else {
             pendingChunks.add(ck);
         }
@@ -1017,26 +1062,36 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         for (int cx = minChunkX; cx <= maxChunkX; cx++) {
             for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
                 long ck = chunkKey(cx, cz);
-                committedChunks.remove(ck);
-                markChunkStale(ck);
+                if (!serverLevel.hasChunk(cx, cz)) {
+                    queueRoomChunk(origin, ck);
+                }
             }
         }
 
-        // write directly
-        for (var block : schematic.finalBlocks().entrySet()) {
-            BlockPos local = block.getKey();
-            BlockPos world = origin.offset(local);
-            if (!serverLevel.isLoaded(world)) continue;
-            serverLevel.setBlock(world, block.getValue(), Block.UPDATE_CLIENTS);
-            if (schematic.chestPositions().contains(local)) {
-                scheduleChestFill(world.immutable(), 0);
-            }
-        }
+        // Write only this newly placed room into already-loaded chunks. Existing
+        // rooms in the same chunks are not replayed, preserving player changes.
+        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
+            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
+                if (!serverLevel.hasChunk(cx, cz)) {
+                    continue;
+                }
 
-        for (BlockPos local : schematic.chestPositions()) {
-            BlockPos world = origin.offset(local).immutable();
-            if (serverLevel.isLoaded(world)) continue;
-            markChunkStale(chunkKey(world.getX() >> 4, world.getZ() >> 4));
+                int relativeChunkX = cx - (origin.getX() >> 4);
+                int relativeChunkZ = cz - (origin.getZ() >> 4);
+                for (ChunkBlockPlacement placement : getChunkPlacements(schematic, relativeChunkX, relativeChunkZ)) {
+                    BlockPos world = origin.offset(placement.localPos());
+                    serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
+                    if (placement.chest()) {
+                        scheduleChestFill(world.immutable(), 0);
+                    }
+                }
+
+                long ck = chunkKey(cx, cz);
+                if (!hasPendingRoomChunk(ck)) {
+                    committedChunks.add(ck);
+                    pendingChunks.remove(ck);
+                }
+            }
         }
     }
 

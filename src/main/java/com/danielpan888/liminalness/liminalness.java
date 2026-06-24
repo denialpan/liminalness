@@ -6,7 +6,6 @@ import com.danielpan888.liminalness.dimension.RegisterChunkGenerator;
 import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkDestination;
 import com.danielpan888.liminalness.dimension.bedlinkage.BedLinkHandler;
 import com.danielpan888.liminalness.dimension.portallinkage.PortalLinkHandler;
-import com.danielpan888.liminalness.util.SchematicLoader;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
@@ -120,35 +119,12 @@ public class liminalness {
 
         if (gen.committedChunks.contains(key)) return;
 
-        int minX = chunkPosition.getMinBlockX(), maxX = minX + 16;
-        int minZ = chunkPosition.getMinBlockZ(), maxZ = minZ + 16;
+        if (!gen.hasPendingRoomChunk(key)) {
+            gen.committedChunks.add(key);
+            return;
+        }
 
-        boolean[] allResolved = {true};
-
-        gen.spatialIndex.anyRoomInChunk(minX, maxX, minZ, maxZ, origin -> {
-            SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
-            if (schematic == null) {
-                allResolved[0] = false;
-                return false;
-            }
-
-            int[] e = gen.getExtents(schematic);
-
-            if (origin.getX() + e[0] <= minX || origin.getX() >= maxX) return false;
-            if (origin.getZ() + e[2] <= minZ || origin.getZ() >= maxZ) return false;
-
-            for (var block : schematic.finalBlocks().entrySet()) {
-                BlockPos world = origin.offset(block.getKey());
-                if (world.getX() < minX || world.getX() >= maxX) continue;
-                if (world.getZ() < minZ || world.getZ() >= maxZ) continue;
-
-                BlockState target = block.getValue();
-                gen.serverLevel.setBlock(world, target, Block.UPDATE_CLIENTS);
-            }
-            return false;
-        });
-
-        if (allResolved[0]) {
+        if (gen.repairPendingChunk(chunkPosition.x, chunkPosition.z)) {
             gen.committedChunks.add(key);
         } else {
             gen.markChunkStale(key);

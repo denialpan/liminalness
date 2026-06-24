@@ -122,17 +122,7 @@ public class FrontierSavedData extends SavedData {
         for (BlockPos origin : gen.persistedRooms) {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
             if (schematic == null) continue;
-            int[] extents = gen.getExtents(schematic);
-
-            int minCX = origin.getX() >> 4, maxCX = (origin.getX() + extents[0] - 1) >> 4;
-            int minCZ = origin.getZ() >> 4, maxCZ = (origin.getZ() + extents[2] - 1) >> 4;
-
-            for (int cx = minCX; cx <= maxCX; cx++) {
-                for (int cz = minCZ; cz <= maxCZ; cz++) {
-                    gen.markChunkStale(FrontierChunkGenerator.chunkKey(cx, cz));
-                }
-            }
-
+            gen.queueUncommittedRoomChunks(origin, schematic);
         }
 
         // Rebuild frontier queues from restored state
