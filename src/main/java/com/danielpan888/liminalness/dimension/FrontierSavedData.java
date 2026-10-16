@@ -20,7 +20,8 @@ public class FrontierSavedData extends SavedData {
     private final List<RoomRecord> rooms   = new ArrayList<>();
     private final Set<BlockPos> claimed = new HashSet<>();
     private final Set<Long> committed = new HashSet<>();
-    private record RoomRecord(BlockPos origin, String schematicPath) {}
+    private boolean hasRoomParentData;
+    private record RoomRecord(BlockPos origin, String schematicPath, BlockPos parentOrigin, boolean complete) {}
     private final Set<BlockPos> portalPositions = new HashSet<>();
     private final Set<BlockPos> jigsawPortalPositions = new HashSet<>();
     private final Set<BlockPos> structurePortalPositions = new HashSet<>();
@@ -44,7 +45,17 @@ public class FrontierSavedData extends SavedData {
         ListTag roomsTag = tag.getList("rooms", Tag.TAG_COMPOUND);
         for (int i = 0; i < roomsTag.size(); i++) {
             CompoundTag r = roomsTag.getCompound(i);
-            data.rooms.add(new RoomRecord(new BlockPos(r.getInt("x"), r.getInt("y"), r.getInt("z")), r.getString("schematic")));
+            boolean hasParentField = r.contains("has_parent", Tag.TAG_BYTE);
+            data.hasRoomParentData |= hasParentField;
+            BlockPos parent = hasParentField && r.getBoolean("has_parent")
+                ? new BlockPos(r.getInt("parent_x"), r.getInt("parent_y"), r.getInt("parent_z"))
+                : null;
+            data.rooms.add(new RoomRecord(
+                new BlockPos(r.getInt("x"), r.getInt("y"), r.getInt("z")),
+                r.getString("schematic"),
+                parent,
+                !r.contains("complete", Tag.TAG_BYTE) || r.getBoolean("complete")
+            ));
         }
 
         ListTag claimedTag = tag.getList("claimed", Tag.TAG_COMPOUND);
@@ -97,6 +108,8 @@ public class FrontierSavedData extends SavedData {
         gen.structurePortalPositions.clear();
         gen.consumedChests.clear();
         gen.spatialIndex.clear();
+        gen.clearRoomGraph();
+        gen.clearPlacementJobs();
         gen.persistedRooms.clear();
         gen.committedChunks.clear();
         gen.resetStaleChunkTracking();
@@ -107,9 +120,23 @@ public class FrontierSavedData extends SavedData {
                 gen.roomOrigins.put(rr.origin(), schematic);
                 gen.spatialIndex.add(rr.origin(), gen.getExtents(schematic));
                 gen.persistedRooms.add(rr.origin());
+                if (!rr.complete()) gen.incompleteRooms.add(rr.origin());
             } else {
                 liminalness.LOGGER.warn("frontier saved data - {}: could not resolve schematic path: {}", gen.getDimensionId(), rr.schematicPath());
             }
+        }
+
+        if (hasRoomParentData) {
+            for (RoomRecord rr : rooms) {
+                if (!gen.roomOrigins.containsKey(rr.origin())) continue;
+                if (rr.parentOrigin() != null && gen.roomOrigins.containsKey(rr.parentOrigin())) {
+                    gen.connectRooms(rr.parentOrigin(), rr.origin());
+                } else {
+                    gen.registerRoomRoot(rr.origin());
+                }
+            }
+        } else {
+            gen.rebuildRoomGraph();
         }
 
         gen.claimed.addAll(claimed);
@@ -118,6 +145,11 @@ public class FrontierSavedData extends SavedData {
         gen.jigsawPortalPositions.addAll(jigsawPortalPositions);
         gen.structurePortalPositions.addAll(structurePortalPositions);
         gen.consumedChests.addAll(consumedChests);
+
+        for (BlockPos origin : List.copyOf(gen.incompleteRooms)) {
+            SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
+            if (schematic != null) gen.resumeIncompleteRoomPlacement(origin, schematic);
+        }
 
         for (BlockPos origin : gen.persistedRooms) {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
@@ -143,9 +175,12 @@ public class FrontierSavedData extends SavedData {
         for (var entry : gen.roomOrigins.entrySet()) {
             rooms.add(new RoomRecord(
                     entry.getKey(),
-                    gen.getPathBySchematic(entry.getValue())
+                    gen.getPathBySchematic(entry.getValue()),
+                    gen.roomParents.get(entry.getKey()),
+                    !gen.incompleteRooms.contains(entry.getKey())
             ));
         }
+        hasRoomParentData = true;
 
         claimed.addAll(gen.claimed);
         portalPositions.addAll(gen.portalPositions);
@@ -193,6 +228,14 @@ public class FrontierSavedData extends SavedData {
             r.putInt("y", rr.origin().getY());
             r.putInt("z", rr.origin().getZ());
             r.putString("schematic", rr.schematicPath());
+            r.putBoolean("complete", rr.complete());
+            BlockPos parent = rr.parentOrigin();
+            r.putBoolean("has_parent", parent != null);
+            if (parent != null) {
+                r.putInt("parent_x", parent.getX());
+                r.putInt("parent_y", parent.getY());
+                r.putInt("parent_z", parent.getZ());
+            }
             roomsTag.add(r);
         }
         tag.put("rooms", roomsTag);

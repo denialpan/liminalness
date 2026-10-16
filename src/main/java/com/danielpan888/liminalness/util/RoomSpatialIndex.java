@@ -107,6 +107,22 @@ public class RoomSpatialIndex {
         return false;
     }
 
+    public BlockPos findContainingRoom(BlockPos pos) {
+        Set<BlockPos> rooms = cellToRooms.get(cellKey(toCell(pos.getX()), toCell(pos.getZ())));
+        if (rooms == null) return null;
+
+        for (BlockPos roomOrigin : rooms) {
+            int[] bounds = roomAABBs.get(roomOrigin);
+            if (bounds != null
+                    && pos.getX() >= bounds[0] && pos.getX() < bounds[3]
+                    && pos.getY() >= bounds[1] && pos.getY() < bounds[4]
+                    && pos.getZ() >= bounds[2] && pos.getZ() < bounds[5]) {
+                return roomOrigin;
+            }
+        }
+        return null;
+    }
+
     public Set<BlockPos> getRoomsInChunk(int minX, int maxX, int minZ, int maxZ) {
         int cellMinX = toCell(minX), cellMaxX = toCell(maxX);
         int cellMinZ = toCell(minZ), cellMaxZ = toCell(maxZ);

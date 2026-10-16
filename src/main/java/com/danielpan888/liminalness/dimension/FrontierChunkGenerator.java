@@ -12,6 +12,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.NoiseColumn;
@@ -61,6 +62,11 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private final Map<SchematicLoader.Schematic, Map<Long, List<ChunkBlockPlacement>>> chunkPlacementCache = new ConcurrentHashMap<>();
     public final Map<SchematicLoader.Schematic, int[]> extentsCache = new ConcurrentHashMap<>();
     public final Map<BlockPos, SchematicLoader.Schematic> roomOrigins = new ConcurrentHashMap<>();
+    public final Map<BlockPos, BlockPos> roomParents = new ConcurrentHashMap<>();
+    private final Map<BlockPos, Set<BlockPos>> roomAdjacency = new ConcurrentHashMap<>();
+    public final Set<BlockPos> incompleteRooms = ConcurrentHashMap.newKeySet();
+    private final ArrayDeque<RoomPlacementJob> placementJobs = new ArrayDeque<>();
+    private final Set<BlockPos> queuedPlacementRooms = new HashSet<>();
 
     // generated patched chunks
     public final Set<Long> committedChunks = ConcurrentHashMap.newKeySet();
@@ -97,6 +103,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private static final int DEFAULT_RECENT_FAMILY_WINDOW = 10;
     private static final int DEFAULT_MINIMUM_ROOMS = 500;
     private static final int DEFAULT_STEPS_PER_TICK = 10;
+    private static final int BLOCK_PLACEMENTS_PER_TICK = 512;
+    private static final long BLOCK_PLACEMENT_BUDGET_NANOS = 2_000_000L;
 
     // default dimension json config
     public int playerSpawnGenerationY = 128;
@@ -107,6 +115,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public int minRooms = DEFAULT_MINIMUM_ROOMS;
     public int stepsPerTick = DEFAULT_STEPS_PER_TICK;
+    public int roomGenerationDepth = 3;
 
     public BlockState fillSpaceState = Blocks.AIR.defaultBlockState();
 
@@ -124,6 +133,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     private static int configuredStepsPerTick() {
         return Config.LIMINALNESS_STEPS_PER_TICK.get();
+    }
+
+    private static int configuredRoomGenerationDepth() {
+        return Config.LIMINALNESS_ROOM_GENERATION_DEPTH.get();
     }
 
     private static int configuredTeleportRange() {
@@ -152,12 +165,49 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         boolean chest
     ) {}
 
+    private record ConnectionOwner(
+        BlockPos roomOrigin,
+        SchematicLoader.ConnectionPoint connection
+    ) {}
+
+    private enum PlacementStage {
+        STRUCTURE,
+        FUNCTIONAL_BLOCKS,
+        BLOCK_ENTITIES,
+        MARKERS,
+        FINALIZE
+    }
+
+    private static final class RoomPlacementJob {
+        private final BlockPos origin;
+        private final SchematicLoader.Schematic schematic;
+        private final List<ChunkBlockPlacement> structuralBlocks;
+        private final List<ChunkBlockPlacement> functionalBlocks;
+        private final Set<Long> touchedChunks = new HashSet<>();
+        private PlacementStage stage = PlacementStage.STRUCTURE;
+        private int cursor;
+
+        private RoomPlacementJob(BlockPos origin, SchematicLoader.Schematic schematic,
+                                 List<ChunkBlockPlacement> structuralBlocks,
+                                 List<ChunkBlockPlacement> functionalBlocks) {
+            this.origin = origin;
+            this.schematic = schematic;
+            this.structuralBlocks = structuralBlocks;
+            this.functionalBlocks = functionalBlocks;
+        }
+    }
+
     // --- the usual initization things ---
 
     public void initialize(DimensionConfig dimensionConfig, long seed) {
 
         this.running = false;
         this.roomOrigins.clear();
+        this.roomParents.clear();
+        this.roomAdjacency.clear();
+        this.incompleteRooms.clear();
+        this.placementJobs.clear();
+        this.queuedPlacementRooms.clear();
         this.claimed.clear();
         this.frontiers.clear();
         this.frontierGroups.clear();
@@ -200,6 +250,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         radiusVertical   = dimensionConfig.generationRadiusVertical();
         minRooms         = configuredMinimumRooms();
         stepsPerTick     = configuredStepsPerTick();
+        roomGenerationDepth = configuredRoomGenerationDepth();
 
         for (DimensionConfig.SchematicEntry entry : dimensionConfig.schematics()) {
             List<Map.Entry<String, SchematicLoader.Schematic>> variants = SchematicLoader.createHorizontalVariants(entry.path(), entry.schematic(), entry.mirroredVariants());
@@ -345,6 +396,121 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         return patchChunk(chunkX, chunkZ);
     }
 
+    public void clearRoomGraph() {
+        roomParents.clear();
+        roomAdjacency.clear();
+    }
+
+    public void clearPlacementJobs() {
+        incompleteRooms.clear();
+        placementJobs.clear();
+        queuedPlacementRooms.clear();
+    }
+
+    public void resumeIncompleteRoomPlacement(BlockPos origin, SchematicLoader.Schematic schematic) {
+        queueRoomPlacement(origin, schematic, null);
+    }
+
+    public void registerRoomRoot(BlockPos origin) {
+        roomParents.remove(origin);
+        roomAdjacency.computeIfAbsent(origin.immutable(), ignored -> ConcurrentHashMap.newKeySet());
+    }
+
+    public void connectRooms(BlockPos parent, BlockPos child) {
+        BlockPos stableParent = parent.immutable();
+        BlockPos stableChild = child.immutable();
+        if (stableParent.equals(stableChild)) return;
+
+        roomParents.put(stableChild, stableParent);
+        roomAdjacency.computeIfAbsent(stableParent, ignored -> ConcurrentHashMap.newKeySet()).add(stableChild);
+        roomAdjacency.computeIfAbsent(stableChild, ignored -> ConcurrentHashMap.newKeySet()).add(stableParent);
+    }
+
+    /** Reconstructs graph edges for saves created before parent links were persisted. */
+    public void rebuildRoomGraph() {
+        clearRoomGraph();
+        Map<BlockPos, List<ConnectionOwner>> connectionsByCorner = new HashMap<>();
+
+        for (var room : roomOrigins.entrySet()) {
+            BlockPos origin = room.getKey();
+            registerRoomRoot(origin);
+            for (SchematicLoader.ConnectionPoint connection : room.getValue().connectionPoints()) {
+                BlockPos corner = origin.offset(connection.corner());
+                connectionsByCorner.computeIfAbsent(corner, ignored -> new ArrayList<>())
+                    .add(new ConnectionOwner(origin, connection));
+            }
+        }
+
+        for (var room : roomOrigins.entrySet()) {
+            BlockPos origin = room.getKey();
+            for (SchematicLoader.ConnectionPoint connection : room.getValue().connectionPoints()) {
+                BlockPos corner = origin.offset(connection.corner());
+                List<ConnectionOwner> neighbors = connectionsByCorner.get(
+                    corner.relative(connection.facing())
+                );
+                if (neighbors == null) continue;
+
+                for (ConnectionOwner neighbor : neighbors) {
+                    SchematicLoader.ConnectionPoint other = neighbor.connection();
+                    if (!origin.equals(neighbor.roomOrigin())
+                            && other.facing() == connection.facing().getOpposite()
+                            && other.width() == connection.width()
+                            && other.height() == connection.height()) {
+                        roomAdjacency.get(origin).add(neighbor.roomOrigin());
+                        roomAdjacency.get(neighbor.roomOrigin()).add(origin);
+                    }
+                }
+            }
+        }
+
+        // Parent direction is only needed for persistence; traversal uses undirected edges.
+        Set<BlockPos> visited = new HashSet<>();
+        for (BlockPos root : roomOrigins.keySet()) {
+            if (!visited.add(root)) continue;
+            ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+            queue.add(root);
+            while (!queue.isEmpty()) {
+                BlockPos parent = queue.removeFirst();
+                for (BlockPos child : roomAdjacency.getOrDefault(parent, Set.of())) {
+                    if (visited.add(child)) {
+                        roomParents.put(child, parent);
+                        queue.addLast(child);
+                    }
+                }
+            }
+        }
+    }
+
+    private Set<BlockPos> activeFrontierSources(List<ServerPlayer> players) {
+        Set<BlockPos> active = new HashSet<>();
+        Map<BlockPos, Integer> bestDistance = new HashMap<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+
+        for (ServerPlayer player : players) {
+            BlockPos room = spatialIndex.findContainingRoom(player.blockPosition());
+            if (room != null && bestDistance.putIfAbsent(room, 0) == null) {
+                queue.addLast(room);
+            }
+        }
+
+        while (!queue.isEmpty()) {
+            BlockPos room = queue.removeFirst();
+            int distance = bestDistance.get(room);
+            if (distance >= roomGenerationDepth) continue;
+            if (!incompleteRooms.contains(room)) active.add(room);
+
+            int nextDistance = distance + 1;
+            for (BlockPos neighbor : roomAdjacency.getOrDefault(room, Set.of())) {
+                Integer previous = bestDistance.get(neighbor);
+                if (previous == null || nextDistance < previous) {
+                    bestDistance.put(neighbor, nextDistance);
+                    queue.addLast(neighbor);
+                }
+            }
+        }
+        return active;
+    }
+
     // --- schematic selection ---
 
     // new cluster of frontiers on random teleportation
@@ -426,6 +592,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         startingRoomOrigin = startPos;
         roomOrigins.put(startPos, startSchema);
         spatialIndex.add(startPos, getExtents(startSchema));
+        registerRoomRoot(startPos);
         registerBlockMarkers(startPos, startSchema);
         seedFrontier(startPos, startSchema);
         recordPlacedFamily(startSchema);
@@ -438,14 +605,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private void placeDisconnectedSeed(BlockPos origin, SchematicLoader.Schematic schematic) {
         roomOrigins.put(origin, schematic);
         spatialIndex.add(origin, getExtents(schematic));
-        writeToWorld(origin, schematic);
-        registerBlockMarkers(origin, schematic);
-        seedFrontier(origin, schematic);
+        registerRoomRoot(origin);
         recordPlacedFamily(schematic);
-
-        final BlockPos finalOrigin = origin;
-        final SchematicLoader.Schematic finalSchematic = schematic;
-        serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalSchematic));
+        queueRoomPlacement(origin, schematic, null);
         resume();
     }
 
@@ -572,13 +734,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             roomOrigins.put(candidateOrigin, candidate);
             spatialIndex.add(candidateOrigin, getExtents(candidate));
-            writeToWorld(candidateOrigin, candidate);
-            registerBlockMarkers(candidateOrigin, candidate);
-            seedFrontier(candidateOrigin, candidate);
-
-            final BlockPos finalOrigin = candidateOrigin;
-            final SchematicLoader.Schematic finalCandidate = candidate;
-            serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalCandidate));
+            registerRoomRoot(candidateOrigin);
+            recordPlacedFamily(candidate);
+            queueRoomPlacement(candidateOrigin, candidate, null);
 
             liminalness.LOGGER.info("frontier generator - restarted disconnected generation with {} at {}", getPathBySchematic(candidate), candidateOrigin);
             return;
@@ -633,15 +791,18 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public void tick() {
 
         if (serverLevel == null) return;
-        List<BlockPos> playerPositions = serverLevel.players().stream().map(p -> p.blockPosition()).toList();
-        if (playerPositions.isEmpty()) return;
+        List<ServerPlayer> players = serverLevel.players();
+        if (players.isEmpty()) return;
+        List<BlockPos> playerPositions = players.stream().map(p -> p.blockPosition()).toList();
         if (needsSeed && isReady() && roomOrigins.isEmpty()) {
             needsSeed = false;
             seedFresh();
             return;
         }
         if (!running) return;
-        if (frontiers.isEmpty() && !roomOrigins.isEmpty() && isReady()) {
+        processPlacementJobs();
+
+        if (frontiers.isEmpty() && placementJobs.isEmpty() && !roomOrigins.isEmpty() && isReady()) {
             restartFromDisconnectedSeed();
         }
 
@@ -650,13 +811,17 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         // expand frontier processing
-        boolean belowMinRooms = roomOrigins.size() < minRooms;
+        Set<BlockPos> activeSources = activeFrontierSources(players);
+        if (activeSources.isEmpty()) return;
         int processed = 0;
         int scanned = 0;
-        int scanLimit = belowMinRooms ? frontiers.size() : Math.min(frontiers.size(), stepsPerTick * 8);
+        int scanLimit = Math.min(frontiers.size(), stepsPerTick * 8);
         List<FrontierEntry> deferred = null;
 
-        while (processed < stepsPerTick && scanned < scanLimit && !frontiers.isEmpty()) {
+        while (processed < stepsPerTick
+                && placementJobs.size() < stepsPerTick
+                && scanned < scanLimit
+                && !frontiers.isEmpty()) {
             List<FrontierEntry> competingEntries = pollFrontierGroup();
             if (competingEntries == null) {
                 continue;
@@ -667,7 +832,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
             if (claimed.contains(selectedEntry.attachPoint())) continue;
 
-            if (belowMinRooms || isInRange(selectedEntry.attachPoint(), playerPositions)) {
+            if (activeSources.contains(selectedEntry.sourceRoomOrigin())) {
                 expandFrontier(selectedEntry);
                 processed++;
             } else {
@@ -701,6 +866,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.frontierGroups.clear();
         for (var entry : this.roomOrigins.entrySet()) {
             BlockPos origin = entry.getKey();
+            if (incompleteRooms.contains(origin)) continue;
             SchematicLoader.Schematic schematic = entry.getValue();
             for (SchematicLoader.ConnectionPoint connectionPoint : schematic.connectionPoints()) {
                 BlockPos worldCorner = origin.offset(connectionPoint.corner());
@@ -761,6 +927,10 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
         boolean allResolved = true;
         for (BlockPos origin : List.copyOf(origins)) {
+            if (incompleteRooms.contains(origin)) {
+                allResolved = false;
+                continue;
+            }
             SchematicLoader.Schematic schematic = roomOrigins.get(origin);
             if (schematic == null) {
                 allResolved = false;
@@ -966,23 +1136,126 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         claimed.add(entry.attachPoint());
         roomOrigins.put(candidateOrigin, candidate);
         spatialIndex.add(candidateOrigin, getExtents(candidate));
-        writeToWorld(candidateOrigin, candidate);
-        registerBlockMarkers(candidateOrigin, candidate);
+        connectRooms(entry.sourceRoomOrigin(), candidateOrigin);
         recordPlacedFamily(candidate);
+        queueRoomPlacement(candidateOrigin, candidate, entry.attachPoint());
+    }
 
-        final BlockPos finalOrigin = candidateOrigin;
-        final SchematicLoader.Schematic finalCandidate = candidate;
-        serverLevel.getServer().execute(() -> applyBlockEntities(finalOrigin, finalCandidate));
+    /** Reserves a room and builds entrance-first placement slices without exposing its frontiers. */
+    private void queueRoomPlacement(BlockPos origin, SchematicLoader.Schematic schematic, BlockPos entranceWorld) {
+        BlockPos stableOrigin = origin.immutable();
+        incompleteRooms.add(stableOrigin);
+        if (!queuedPlacementRooms.add(stableOrigin)) return;
 
-        for (SchematicLoader.ConnectionPoint connectionPoint : candidate.connectionPoints()) {
-            BlockPos worldCorner = candidateOrigin.offset(connectionPoint.corner());
-            BlockPos attachPoint = worldCorner.relative(connectionPoint.facing(), 1);
-            for (int level : getLevelsForSchematic(candidate)) {
-                if (!claimed.contains(attachPoint)) {
-                    enqueueFrontier(new FrontierEntry(candidateOrigin, attachPoint, connectionPoint.facing(), connectionPoint.width(), connectionPoint.height(), connectionPoint.patternHash(), connectionPoint.pattern().clone(), level));
-                }
+        BlockPos focus = entranceWorld == null
+            ? new BlockPos(schematic.extentX() / 2, schematic.extentY() / 2, schematic.extentZ() / 2)
+            : entranceWorld.subtract(stableOrigin);
+        Comparator<ChunkBlockPlacement> entranceFirst = Comparator
+            .comparingInt((ChunkBlockPlacement placement) -> sectionDistance(placement.localPos(), focus))
+            .thenComparingInt(placement -> blockDistanceSquared(placement.localPos(), focus));
+
+        List<ChunkBlockPlacement> structural = new ArrayList<>();
+        List<ChunkBlockPlacement> functional = new ArrayList<>();
+        for (var block : schematic.finalBlocks().entrySet()) {
+            BlockPos local = block.getKey().immutable();
+            ChunkBlockPlacement placement = new ChunkBlockPlacement(
+                local,
+                block.getValue(),
+                schematic.chestPositions().contains(local)
+            );
+            if (schematic.blockEntityData().containsKey(local) || block.getValue().hasBlockEntity()) {
+                functional.add(placement);
+            } else {
+                structural.add(placement);
             }
         }
+        structural.sort(entranceFirst);
+        functional.sort(entranceFirst);
+        placementJobs.addLast(new RoomPlacementJob(stableOrigin, schematic, structural, functional));
+    }
+
+    private static int sectionDistance(BlockPos pos, BlockPos focus) {
+        return Math.abs((pos.getX() >> 4) - (focus.getX() >> 4))
+            + Math.abs((pos.getY() >> 4) - (focus.getY() >> 4))
+            + Math.abs((pos.getZ() >> 4) - (focus.getZ() >> 4));
+    }
+
+    private static int blockDistanceSquared(BlockPos pos, BlockPos focus) {
+        int dx = pos.getX() - focus.getX();
+        int dy = pos.getY() - focus.getY();
+        int dz = pos.getZ() - focus.getZ();
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    /** Advances placement jobs under both a block-count cap and a wall-clock tick budget. */
+    private void processPlacementJobs() {
+        if (placementJobs.isEmpty()) return;
+
+        long deadline = System.nanoTime() + BLOCK_PLACEMENT_BUDGET_NANOS;
+        int remainingBlocks = BLOCK_PLACEMENTS_PER_TICK;
+
+        while (!placementJobs.isEmpty()) {
+            RoomPlacementJob job = placementJobs.peekFirst();
+            if (job.stage == PlacementStage.STRUCTURE || job.stage == PlacementStage.FUNCTIONAL_BLOCKS) {
+                List<ChunkBlockPlacement> placements = job.stage == PlacementStage.STRUCTURE
+                    ? job.structuralBlocks
+                    : job.functionalBlocks;
+                while (job.cursor < placements.size() && remainingBlocks > 0 && System.nanoTime() < deadline) {
+                    writePlacementBlock(job, placements.get(job.cursor++));
+                    remainingBlocks--;
+                }
+                if (job.cursor < placements.size()) return;
+                job.cursor = 0;
+                job.stage = job.stage == PlacementStage.STRUCTURE
+                    ? PlacementStage.FUNCTIONAL_BLOCKS
+                    : PlacementStage.BLOCK_ENTITIES;
+                if (remainingBlocks == 0 || System.nanoTime() >= deadline) return;
+                continue;
+            }
+
+            if (job.stage == PlacementStage.BLOCK_ENTITIES) {
+                applyBlockEntities(job.origin, job.schematic);
+                for (BlockPos local : job.schematic.chestPositions()) {
+                    BlockPos world = job.origin.offset(local).immutable();
+                    if (serverLevel.isLoaded(world)) scheduleChestFill(world, 0);
+                }
+                job.stage = PlacementStage.MARKERS;
+                continue;
+            }
+
+            if (job.stage == PlacementStage.MARKERS) {
+                registerBlockMarkers(job.origin, job.schematic);
+                job.stage = PlacementStage.FINALIZE;
+                continue;
+            }
+
+            // ServerLevel#setBlock has already queued light and client changes. Commit
+            // bookkeeping only after all visible and functional room data exists.
+            for (long chunkKey : job.touchedChunks) {
+                if (!hasPendingRoomChunk(chunkKey)) {
+                    committedChunks.add(chunkKey);
+                    pendingChunks.remove(chunkKey);
+                }
+            }
+            incompleteRooms.remove(job.origin);
+            queuedPlacementRooms.remove(job.origin);
+            seedFrontier(job.origin, job.schematic);
+            placementJobs.removeFirst();
+        }
+    }
+
+    private void writePlacementBlock(RoomPlacementJob job, ChunkBlockPlacement placement) {
+        BlockPos world = job.origin.offset(placement.localPos());
+        int chunkX = world.getX() >> 4;
+        int chunkZ = world.getZ() >> 4;
+        long chunkKey = chunkKey(chunkX, chunkZ);
+        if (!serverLevel.hasChunk(chunkX, chunkZ)) {
+            queueRoomChunk(job.origin, chunkKey);
+            return;
+        }
+
+        serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
+        job.touchedChunks.add(chunkKey);
     }
 
     private int countNewConnections(SchematicLoader.Schematic candidate, BlockPos origin) {
@@ -1086,51 +1359,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         return CompletableFuture.completedFuture(chunk);
-    }
-
-    private void writeToWorld(BlockPos origin, SchematicLoader.Schematic schematic) {
-        if (serverLevel == null) return;
-
-        int[] extents = getExtents(schematic);
-        int minChunkX = origin.getX() >> 4;
-        int maxChunkX = (origin.getX() + extents[0] - 1) >> 4;
-        int minChunkZ = origin.getZ() >> 4;
-        int maxChunkZ = (origin.getZ() + extents[2] - 1) >> 4;
-
-        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
-            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                long ck = chunkKey(cx, cz);
-                if (!serverLevel.hasChunk(cx, cz)) {
-                    queueRoomChunk(origin, ck);
-                }
-            }
-        }
-
-        // Write only this newly placed room into already-loaded chunks. Existing
-        // rooms in the same chunks are not replayed, preserving player changes.
-        for (int cx = minChunkX; cx <= maxChunkX; cx++) {
-            for (int cz = minChunkZ; cz <= maxChunkZ; cz++) {
-                if (!serverLevel.hasChunk(cx, cz)) {
-                    continue;
-                }
-
-                int relativeChunkX = cx - (origin.getX() >> 4);
-                int relativeChunkZ = cz - (origin.getZ() >> 4);
-                for (ChunkBlockPlacement placement : getChunkPlacements(schematic, relativeChunkX, relativeChunkZ)) {
-                    BlockPos world = origin.offset(placement.localPos());
-                    serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
-                    if (placement.chest()) {
-                        scheduleChestFill(world.immutable(), 0);
-                    }
-                }
-
-                long ck = chunkKey(cx, cz);
-                if (!hasPendingRoomChunk(ck)) {
-                    committedChunks.add(ck);
-                    pendingChunks.remove(ck);
-                }
-            }
-        }
     }
 
     // retry filling chest during generation in case block entity race condition
@@ -1387,19 +1615,6 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         }
 
         return getSpawnPositionForRoom(origin, schematic);
-    }
-
-    // player range detection
-    private boolean isInRange(BlockPos pos, List<BlockPos> players) {
-        for (BlockPos player : players) {
-            if (Math.abs(pos.getX() - player.getX()) <= radiusHorizontal &&
-                    Math.abs(pos.getZ() - player.getZ()) <= radiusHorizontal &&
-                    Math.abs(pos.getY() - player.getY()) <= radiusVertical)
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     public static long connectionSignature(Direction facing, int width, int height, long patternHash) {

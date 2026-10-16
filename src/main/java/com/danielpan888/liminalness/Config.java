@@ -19,6 +19,10 @@ public class Config {
             .comment("Number of rooms to generate per tick. Increase this value to allow the mod to generate the number of rooms faster, reduce to prevent CPU load.")
             .defineInRange("steps_per_tick", 10, 1, Integer.MAX_VALUE);
 
+    public static final ModConfigSpec.IntValue LIMINALNESS_ROOM_GENERATION_DEPTH = BUILDER
+            .comment("Maximum number of connected rooms generated ahead of each player's current room.")
+            .defineInRange("room_generation_depth", 7, 1, 64);
+
     public static final ModConfigSpec.IntValue LIMINALNESS_TELEPORT_RANGE = BUILDER
             .comment("Max radius of blocks from 0, 0 that a player can end up on random teleportation.")
             .defineInRange("teleport_range", 2560000, 2000, Integer.MAX_VALUE);
