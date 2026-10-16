@@ -26,6 +26,7 @@ public class FrontierSavedData extends SavedData {
     private final Set<BlockPos> jigsawPortalPositions = new HashSet<>();
     private final Set<BlockPos> structurePortalPositions = new HashSet<>();
     private final Set<BlockPos> consumedChests = new HashSet<>();
+    private final Set<BlockPos> pendingChests = new HashSet<>();
 
     private static String dataName(FrontierChunkGenerator gen) {
         return "frontier_" + gen.getDimensionId().toString().replace(":", "_");
@@ -93,6 +94,12 @@ public class FrontierSavedData extends SavedData {
             data.consumedChests.add(new BlockPos(c.getInt("x"), c.getInt("y"), c.getInt("z")));
         }
 
+        ListTag pendingChestsTag = tag.getList("pending_chests", Tag.TAG_COMPOUND);
+        for (int i = 0; i < pendingChestsTag.size(); i++) {
+            CompoundTag c = pendingChestsTag.getCompound(i);
+            data.pendingChests.add(new BlockPos(c.getInt("x"), c.getInt("y"), c.getInt("z")));
+        }
+
         liminalness.LOGGER.info("frontier saved data — rooms={} claimed={} portals={}", data.rooms.size(), data.claimed.size(), data.portalPositions.size());
 
         return data;
@@ -107,6 +114,7 @@ public class FrontierSavedData extends SavedData {
         gen.jigsawPortalPositions.clear();
         gen.structurePortalPositions.clear();
         gen.consumedChests.clear();
+        gen.clearChestFillQueue();
         gen.spatialIndex.clear();
         gen.clearRoomGraph();
         gen.clearPlacementJobs();
@@ -145,6 +153,9 @@ public class FrontierSavedData extends SavedData {
         gen.jigsawPortalPositions.addAll(jigsawPortalPositions);
         gen.structurePortalPositions.addAll(structurePortalPositions);
         gen.consumedChests.addAll(consumedChests);
+        for (BlockPos pos : pendingChests) {
+            if (!gen.consumedChests.contains(pos)) gen.restorePendingChestFill(pos);
+        }
 
         for (BlockPos origin : List.copyOf(gen.incompleteRooms)) {
             SchematicLoader.Schematic schematic = gen.roomOrigins.get(origin);
@@ -170,6 +181,7 @@ public class FrontierSavedData extends SavedData {
         jigsawPortalPositions.clear();
         structurePortalPositions.clear();
         consumedChests.clear();
+        pendingChests.clear();
         committed.clear();
 
         for (var entry : gen.roomOrigins.entrySet()) {
@@ -187,6 +199,7 @@ public class FrontierSavedData extends SavedData {
         jigsawPortalPositions.addAll(gen.jigsawPortalPositions);
         structurePortalPositions.addAll(gen.structurePortalPositions);
         consumedChests.addAll(gen.consumedChests);
+        pendingChests.addAll(gen.pendingChestPositions);
         committed.addAll(gen.committedChunks);
 
     }
@@ -297,6 +310,16 @@ public class FrontierSavedData extends SavedData {
             consumedTag.add(c);
         }
         tag.put("consumed_chests", consumedTag);
+
+        ListTag pendingChestsTag = new ListTag();
+        for (BlockPos pos : pendingChests) {
+            CompoundTag c = new CompoundTag();
+            c.putInt("x", pos.getX());
+            c.putInt("y", pos.getY());
+            c.putInt("z", pos.getZ());
+            pendingChestsTag.add(c);
+        }
+        tag.put("pending_chests", pendingChestsTag);
 
         liminalness.LOGGER.info("save — rooms={} claimed={} portals={}", rooms.size(), claimed.size(), portalPositions.size());
 

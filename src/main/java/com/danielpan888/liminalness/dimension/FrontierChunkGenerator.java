@@ -53,6 +53,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     public final Set<BlockPos> structurePortalPositions = ConcurrentHashMap.newKeySet();
     public final Set<BlockPos> chestPositions = ConcurrentHashMap.newKeySet();
     public final Set<BlockPos> consumedChests = ConcurrentHashMap.newKeySet();
+    public final Set<BlockPos> pendingChestPositions = ConcurrentHashMap.newKeySet();
+    private final ArrayDeque<PendingChestFill> pendingChestFills = new ArrayDeque<>();
 
 
     // current frontier connection points
@@ -105,6 +107,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private static final int DEFAULT_STEPS_PER_TICK = 10;
     private static final int BLOCK_PLACEMENTS_PER_TICK = 512;
     private static final long BLOCK_PLACEMENT_BUDGET_NANOS = 2_000_000L;
+    private static final int CHEST_FILLS_PER_TICK = 4;
+    private static final long CHEST_FILL_BUDGET_NANOS = 1_000_000L;
+    private static final int MAX_CHEST_FILL_ATTEMPTS = 10;
 
     // default dimension json config
     public int playerSpawnGenerationY = 128;
@@ -169,6 +174,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         BlockPos roomOrigin,
         SchematicLoader.ConnectionPoint connection
     ) {}
+
+    private record PendingChestFill(BlockPos pos, int attempt, long readyGameTime) {}
 
     private enum PlacementStage {
         STRUCTURE,
@@ -235,6 +242,8 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         this.structurePortalPositions.clear();
         this.chestPositions.clear();
         this.consumedChests.clear();
+        this.pendingChestPositions.clear();
+        this.pendingChestFills.clear();
         this.staleChunkQueue.clear();
         this.queuedStaleChunks.clear();
         this.pendingRoomChunks.clear();
@@ -409,6 +418,15 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
 
     public void resumeIncompleteRoomPlacement(BlockPos origin, SchematicLoader.Schematic schematic) {
         queueRoomPlacement(origin, schematic, null);
+    }
+
+    public void clearChestFillQueue() {
+        pendingChestPositions.clear();
+        pendingChestFills.clear();
+    }
+
+    public void restorePendingChestFill(BlockPos pos) {
+        queueChestFill(pos, 0, 0L);
     }
 
     public void registerRoomRoot(BlockPos origin) {
@@ -800,6 +818,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             return;
         }
         if (!running) return;
+        processChestFillQueue();
         processPlacementJobs();
 
         if (frontiers.isEmpty() && placementJobs.isEmpty() && !roomOrigins.isEmpty() && isReady()) {
@@ -947,7 +966,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 }
                 serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
                 if (placement.chest()) {
-                    scheduleChestFill(world.immutable(), 0);
+                    queueChestFill(world.immutable(), 0, serverLevel.getGameTime());
                 }
             }
         }
@@ -1217,7 +1236,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                 applyBlockEntities(job.origin, job.schematic);
                 for (BlockPos local : job.schematic.chestPositions()) {
                     BlockPos world = job.origin.offset(local).immutable();
-                    if (serverLevel.isLoaded(world)) scheduleChestFill(world, 0);
+                    if (serverLevel.isLoaded(world)) {
+                        queueChestFill(world, 0, serverLevel.getGameTime());
+                    }
                 }
                 job.stage = PlacementStage.MARKERS;
                 continue;
@@ -1361,27 +1382,51 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         return CompletableFuture.completedFuture(chunk);
     }
 
-    // retry filling chest during generation in case block entity race condition
-    private void scheduleChestFill(BlockPos world, int attempt) {
-        if (attempt > 10) {
-            liminalness.LOGGER.warn("frontier generator - chest at {} failed after 10 attempts", world);
-            return;
+    private void queueChestFill(BlockPos world, int attempt, long readyGameTime) {
+        BlockPos stable = world.immutable();
+        if (consumedChests.contains(stable) || !pendingChestPositions.add(stable)) return;
+        pendingChestFills.addLast(new PendingChestFill(stable, attempt, readyGameTime));
+    }
+
+    /** Populates only a few chests per tick so enchantment work cannot arrive as one burst. */
+    private void processChestFillQueue() {
+        if (pendingChestFills.isEmpty()) return;
+
+        long deadline = System.nanoTime() + CHEST_FILL_BUDGET_NANOS;
+        long gameTime = serverLevel.getGameTime();
+        int available = pendingChestFills.size();
+        int processed = 0;
+
+        while (available-- > 0
+                && processed < CHEST_FILLS_PER_TICK
+                && System.nanoTime() < deadline) {
+            PendingChestFill pending = pendingChestFills.removeFirst();
+            if (pending.readyGameTime() > gameTime) {
+                pendingChestFills.addLast(pending);
+                continue;
+            }
+
+            BlockPos pos = pending.pos();
+            if (consumedChests.contains(pos)) {
+                pendingChestPositions.remove(pos);
+                continue;
+            }
+
+            processed++;
+            if (serverLevel.isLoaded(pos) && ChestLootHandler.fillChest(serverLevel, pos, worldSeed)) {
+                consumedChests.add(pos);
+                pendingChestPositions.remove(pos);
+                continue;
+            }
+
+            if (pending.attempt() >= MAX_CHEST_FILL_ATTEMPTS) {
+                pendingChestPositions.remove(pos);
+                liminalness.LOGGER.warn("frontier generator - chest at {} failed after {} attempts", pos, MAX_CHEST_FILL_ATTEMPTS);
+                continue;
+            }
+
+            pendingChestFills.addLast(new PendingChestFill(pos, pending.attempt() + 1, gameTime + 1));
         }
-        serverLevel.getServer().execute(() -> {
-            if (!serverLevel.isLoaded(world)) {
-                scheduleChestFill(world, attempt + 1);
-                return;
-            }
-            var blockEntity = serverLevel.getBlockEntity(world);
-            if (blockEntity == null) {
-                scheduleChestFill(world, attempt + 1);
-                return;
-            }
-            if (!consumedChests.add(world)) {
-                return;
-            }
-            ChestLootHandler.fillChest(serverLevel, world, worldSeed);
-        });
     }
 
     // specific reserved blocks with custom function and interactions
@@ -1416,7 +1461,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             if (!serverLevel.isLoaded(world)) continue;
 
             BlockState current = serverLevel.getBlockState(world);
-            liminalness.LOGGER.info("applyBlockEntities - pos={} block={}", world, current);
+            liminalness.LOGGER.debug("applyBlockEntities - pos={} block={}", world, current);
 
             var blockEntity = serverLevel.getBlockEntity(world);
             if (blockEntity == null) {
@@ -1432,7 +1477,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             blockEntity.loadWithComponents(toApply, serverLevel.registryAccess());
             blockEntity.setChanged();
             serverLevel.sendBlockUpdated(world, current, current, Block.UPDATE_CLIENTS);
-            liminalness.LOGGER.info("applyBlockEntities - applied {} items at {}",
+            liminalness.LOGGER.debug("applyBlockEntities - applied {} items at {}",
                     toApply.contains("Items") ? toApply.getList("Items", 10).size() : 0, world);
         }
     }
