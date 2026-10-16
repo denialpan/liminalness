@@ -110,6 +110,9 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
     private static final int CHEST_FILLS_PER_TICK = 4;
     private static final long CHEST_FILL_BUDGET_NANOS = 1_000_000L;
     private static final int MAX_CHEST_FILL_ATTEMPTS = 10;
+    // Schematics already contain final transformed states, so skip per-block
+    // neighbor-shape propagation while retaining client and lighting updates.
+    private static final int SCHEMATIC_PLACEMENT_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE;
 
     // default dimension json config
     public int playerSpawnGenerationY = 128;
@@ -964,7 +967,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
                     allResolved = false;
                     continue;
                 }
-                serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
+                serverLevel.setBlock(world, placement.state(), SCHEMATIC_PLACEMENT_FLAGS);
                 if (placement.chest()) {
                     queueChestFill(world.immutable(), 0, serverLevel.getGameTime());
                 }
@@ -1275,7 +1278,7 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             return;
         }
 
-        serverLevel.setBlock(world, placement.state(), Block.UPDATE_CLIENTS);
+        serverLevel.setBlock(world, placement.state(), SCHEMATIC_PLACEMENT_FLAGS);
         job.touchedChunks.add(chunkKey);
     }
 
