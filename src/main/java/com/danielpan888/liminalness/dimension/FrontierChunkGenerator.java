@@ -23,6 +23,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
@@ -1008,15 +1010,46 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
         int maxZ = minZ + 16;
 
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+        int fillMinY = Math.max(dimensionMinGenerationY, chunk.getMinBuildHeight());
+        int fillMaxY = Math.min(dimensionMaxGenerationY, chunk.getMaxBuildHeight() - 1);
 
+        if (fillMinY <= fillMaxY) {
+            for (int sectionIndex = 0; sectionIndex < chunk.getSectionsCount(); sectionIndex++) {
+                int sectionY = chunk.getSectionYFromSectionIndex(sectionIndex);
+                int sectionMinY = sectionY << 4;
+                int sectionMaxY = sectionMinY + 15;
+                int localMinY = Math.max(fillMinY, sectionMinY) - sectionMinY;
+                int localMaxY = Math.min(fillMaxY, sectionMaxY) - sectionMinY;
+                if (localMinY > localMaxY) continue;
 
-        // solid fill debug test
-        for (int x = minX; x < maxX; x++)
-            for (int z = minZ; z < maxZ; z++)
-                for (int y = dimensionMinGenerationY; y <= dimensionMaxGenerationY; y++) {
-                    mutable.set(x, y, z);
-                    chunk.setBlockState(mutable, fillSpaceState, false);
+                LevelChunkSection current = chunk.getSection(sectionIndex);
+                if (localMinY == 0 && localMaxY == 15) {
+                    PalettedContainer<BlockState> states = new PalettedContainer<>(
+                        Block.BLOCK_STATE_REGISTRY,
+                        fillSpaceState,
+                        PalettedContainer.Strategy.SECTION_STATES
+                    );
+                    chunk.getSections()[sectionIndex] = new LevelChunkSection(states, current.getBiomes());
+                    continue;
                 }
+
+                current.acquire();
+                try {
+                    PalettedContainer<BlockState> states = current.getStates();
+                    for (int localY = localMinY; localY <= localMaxY; localY++) {
+                        for (int localZ = 0; localZ < 16; localZ++) {
+                            for (int localX = 0; localX < 16; localX++) {
+                                states.getAndSetUnchecked(localX, localY, localZ, fillSpaceState);
+                            }
+                        }
+                    }
+                } finally {
+                    current.release();
+                }
+                current.recalcBlockCounts();
+            }
+            chunk.setUnsaved(true);
+        }
 
         boolean[] allResolved = {true};
 
@@ -1036,6 +1069,11 @@ public abstract class FrontierChunkGenerator extends ChunkGenerator {
             }
             return false;
         });
+
+        Heightmap.primeHeightmaps(chunk, EnumSet.of(
+            Heightmap.Types.OCEAN_FLOOR_WG,
+            Heightmap.Types.WORLD_SURFACE_WG
+        ));
 
         long ck = chunkKey(chunk.getPos().x, chunk.getPos().z);
         if (allResolved[0]) {
